@@ -12,9 +12,10 @@ async function connectDB() {
     const MONGODB_URI = process.env.MONGODB_URI;
 
     if (!MONGODB_URI) {
-        throw new Error(
-            "Please define the MONGODB_URI environment variable inside .env.local"
-        );
+        // During Vercel build, env vars may not be available.
+        // Return null gracefully so static page generation doesn't crash.
+        console.warn("[connectDB] MONGODB_URI not set — skipping DB connection (build phase?)");
+        return null;
     }
 
     if (cached.conn) {
