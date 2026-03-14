@@ -4,9 +4,8 @@ import { Member } from "@/models/Member";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import QRCode from "qrcode";
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
+import { uploadBase64Image, uploadBuffer } from "@/lib/cloudinary";
 
 // Utility to generate the next Member ID for a specific pool
 async function getNextMemberId(poolId: string) {
@@ -25,16 +24,13 @@ export async function GET(req: Request) {
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         await connectDB();
-        
-        const { searchParams } = new URL(req.url);
-        const memberType = searchParams.get("type"); // "swimming" or "entertainment"
 
         const query: any = { status: { $ne: "deleted" } };
         if (session.user.role !== "superadmin" && session.user.poolId) {
             query.poolId = session.user.poolId;
         }
-        
-        let members = await Member.find(query)
+
+        const members = await Member.find(query)
             .populate("planId", "name durationDays price voiceAlert")
             .sort({ createdAt: -1 });
 
@@ -76,39 +72,33 @@ export async function POST(req: Request) {
         // Generate Member ID specific to this pool
         const memberId = await getNextMemberId(poolId);
 
-        // Handle Photo Upload (save to public/uploads)
+        // Upload photo to Cloudinary
         let photoUrl = "";
         if (photoBase64) {
-            const base64Data = photoBase64.replace(/^data:image\/\w+;base64,/, "");
-            const ext = photoBase64.substring("data:image/".length, photoBase64.indexOf(";base64"));
-            const fileName = `${memberId}_photo.${ext}`;
-            const uploadPath = path.join(process.cwd(), "public", "uploads", fileName);
-            fs.writeFileSync(uploadPath, base64Data, "base64");
-            photoUrl = `/uploads/${fileName}`;
+            photoUrl = await uploadBase64Image(
+                photoBase64,
+                "swimming-pool/photos",
+                `${poolId}_${memberId}_photo`
+            );
         }
 
-        // Generate QR Code containing memberId:qrToken
+        // Generate QR Code and upload to Cloudinary
         const qrToken = crypto.randomUUID();
-        const qrCodeDataUrl = await QRCode.toDataURL(`${memberId}:${qrToken}`);
+        const qrPngBuffer = await QRCode.toBuffer(`${memberId}:${qrToken}`, { width: 300 });
+        const qrCodeUrl = await uploadBuffer(
+            qrPngBuffer,
+            "swimming-pool/qrcodes",
+            `${poolId}_${memberId}_qr`
+        );
 
-        // Save QR Code as image file for future downloads
-        const qrFileName = `${memberId}_qr.png`;
-        const qrUploadPath = path.join(process.cwd(), "public", "uploads", qrFileName);
-        const qrBase64Data = qrCodeDataUrl.replace(/^data:image\/png;base64,/, "");
-        fs.mkdirSync(path.join(process.cwd(), "public", "uploads"), { recursive: true });
-        fs.writeFileSync(qrUploadPath, qrBase64Data, "base64");
-        const qrCodeUrl = `/uploads/${qrFileName}`;
-
-        // Get plan standard duration to calculate expiry
-        // Assuming plan duration lookup is needed, or the client passed startDate/expiryDate
-        // For simplicity, we calculate it here based on plan duration
+        // Validate plan
         const { Plan } = await import("@/models/Plan");
         const plan = await Plan.findById(planId);
         if (!plan) return NextResponse.json({ error: "Invalid Plan" }, { status: 400 });
 
         const startDate = new Date();
         const expiryDate = new Date();
-        
+
         if (plan.durationSeconds) {
             expiryDate.setSeconds(expiryDate.getSeconds() + plan.durationSeconds);
         } else if (plan.durationMinutes) {

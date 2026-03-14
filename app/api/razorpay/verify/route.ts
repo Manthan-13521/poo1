@@ -5,29 +5,9 @@ import { Payment } from "@/models/Payment";
 import { Plan } from "@/models/Plan";
 import crypto from "crypto";
 import QRCode from "qrcode";
-import path from "path";
-import fs from "fs";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { logger } from "@/lib/logger";
-
-async function savePublicImage(base64Str: string, memberId: string): Promise<string> {
-    const matches = base64Str.match(/^data:image\/([A-Za-z-+/]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) throw new Error("Invalid base64 string");
-    const extension = matches[1] === "jpeg" ? "jpg" : matches[1];
-    const buffer = Buffer.from(matches[2], "base64");
-    const fileName = `${memberId}_photo_${Date.now()}.${extension}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-    fs.writeFileSync(path.join(uploadDir, fileName), buffer);
-    return `/uploads/${fileName}`;
-}
-
-async function createPublicQR(memberId: string, qrToken: string): Promise<string> {
-    const fileName = `${memberId}_qr_${Date.now()}.png`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-    // Encode both memberId and qrToken — entry scanner reads "memberId:qrToken"
-    await QRCode.toFile(path.join(uploadDir, fileName), `${memberId}:${qrToken}`, { width: 300 });
-    return `/uploads/${fileName}`;
-}
+import { uploadBase64Image, uploadBuffer } from "@/lib/cloudinary";
 
 export async function POST(req: Request) {
     try {
@@ -60,7 +40,7 @@ export async function POST(req: Request) {
 
         await connectDB();
 
-        // ── Idempotency: prevent duplicate member/payment if same order verified twice ──
+        // Idempotency: prevent duplicate member/payment if same order verified twice
         if (razorpay_order_id && !isMock) {
             const existingPayment = await Payment.findOne({
                 razorpayOrderId: razorpay_order_id,
@@ -99,7 +79,7 @@ export async function POST(req: Request) {
         const startDate = new Date();
         const expiryDate = new Date();
         const quantity = memberData.cartQuantity || 1;
-                if (plan.durationSeconds) {
+        if (plan.durationSeconds) {
             expiryDate.setSeconds(expiryDate.getSeconds() + plan.durationSeconds);
         } else if (plan.durationMinutes) {
             expiryDate.setMinutes(expiryDate.getMinutes() + (plan.durationMinutes || 0));
@@ -109,20 +89,29 @@ export async function POST(req: Request) {
             expiryDate.setDate(expiryDate.getDate() + (plan.durationDays || 30));
         }
 
-        // Photo
+        // Upload photo to Cloudinary
         let photoUrl = "";
         if (memberData.photoBase64) {
-            photoUrl = await savePublicImage(memberData.photoBase64, generatedMemberId);
+            photoUrl = await uploadBase64Image(
+                memberData.photoBase64,
+                "swimming-pool/photos",
+                `${plan.poolId}_${generatedMemberId}_photo`
+            );
         }
 
-        // QR Token & Code
+        // Generate QR and upload to Cloudinary
         const qrToken = crypto.randomUUID();
-        const qrCodeUrl = await createPublicQR(generatedMemberId, qrToken);
+        const qrPngBuffer = await QRCode.toBuffer(`${generatedMemberId}:${qrToken}`, { width: 300 });
+        const qrCodeUrl = await uploadBuffer(
+            qrPngBuffer,
+            "swimming-pool/qrcodes",
+            `${plan.poolId}_${generatedMemberId}_qr`
+        );
 
         // Create Member
         const newMember = new Member({
             memberId: generatedMemberId,
-            poolId: plan.poolId, // Inject tenant
+            poolId: plan.poolId,
             name: memberData.name,
             dob,
             age,
@@ -145,7 +134,7 @@ export async function POST(req: Request) {
         // Record Payment
         const payment = new Payment({
             memberId: newMember._id,
-            poolId: plan.poolId, // Inject tenant
+            poolId: plan.poolId,
             planId: plan._id,
             amount: plan.price * quantity,
             paymentMethod: "razorpay_online",
