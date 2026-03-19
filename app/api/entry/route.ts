@@ -12,6 +12,8 @@ import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import mongoose from "mongoose";
 import { runOccupancyCleanupInBackground } from "@/lib/cleanup";
 
+export const dynamic = "force-dynamic";
+
 const SCAN_COOLDOWN_MS = 3000; // 3-second cooldown
 
 export async function POST(req: Request) {
