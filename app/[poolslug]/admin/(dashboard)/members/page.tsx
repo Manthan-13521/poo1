@@ -62,7 +62,7 @@ function daysLeftLabel(member: Member): string {
     const endDate = new Date(member.planEndDate || member.expiryDate || "");
     const msLeft = endDate.getTime() - Date.now();
     if (msLeft < 0) return "Expired"; // Fix: any negative ms is expired
-    
+
     // Check if it's less than 24 hours
     if (msLeft < 1000 * 60 * 60 * 24) {
         const hrs = Math.floor(msLeft / (1000 * 60 * 60));
@@ -83,11 +83,11 @@ function statusBadge(member: Member) {
     const endDate = new Date(member.planEndDate || member.expiryDate || "");
     const msLeft = endDate.getTime() - Date.now();
     if (msLeft < 0) return { label: "EXPIRED", cls: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400" };
-    
+
     if (msLeft < 1000 * 60 * 60 * 24) {
         return { label: "EXPIRES TODAY", cls: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400" };
     }
-    
+
     const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
     if (daysLeft <= 7) return { label: "EXPIRING", cls: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400" };
     return { label: "ACTIVE", cls: "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-500/10 dark:text-green-400" };
@@ -118,7 +118,7 @@ export default function MembersPage() {
             limit: String(LIMIT),
             ...(searchDebounced ? { search: searchDebounced } : {}),
         });
-        fetch(`/api/members?${params}&t=${Date.now()}`)
+        fetch(`/api/members?${params}`)
             .then((res) => res.json())
             .then((data) => {
                 // API returns { data: [], total, page, limit }
@@ -150,18 +150,18 @@ export default function MembersPage() {
     const handleReprint = (member: Member) => {
         const plan = member.planId as Plan;
         printThermal({
-            poolName:      "Swimming Pool",
-            memberId:      member.memberId,
-            name:          member.name,
-            age:           member.age,
-            phone:         member.phone,
-            planName:      plan?.name ?? "N/A",
-            planQty:       member.planQuantity ?? 1,
-            planPrice:     plan?.price ?? 0,
-            paidAmount:    member.paidAmount ?? 0,
-            balance:       member.balanceAmount ?? 0,
-            registeredAt:  new Date(member.createdAt),
-            validTill:     new Date(member.planEndDate || member.expiryDate || ""),
+            poolName: "Swimming Pool",
+            memberId: member.memberId,
+            name: member.name,
+            age: member.age,
+            phone: member.phone,
+            planName: plan?.name ?? "N/A",
+            planQty: member.planQuantity ?? 1,
+            planPrice: plan?.price ?? 0,
+            paidAmount: member.paidAmount ?? 0,
+            balance: member.balanceAmount ?? 0,
+            registeredAt: new Date(member.createdAt),
+            validTill: new Date(member.planEndDate || member.expiryDate || ""),
         });
     };
 
@@ -251,7 +251,7 @@ export default function MembersPage() {
                                                             ? <img src={member.photoUrl} alt="" className="h-9 w-9 rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700" />
                                                             : <div className="h-9 w-9 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center">
                                                                 <span className="text-indigo-700 dark:text-indigo-300 font-bold text-sm">{member.name.charAt(0).toUpperCase()}</span>
-                                                              </div>
+                                                            </div>
                                                         }
                                                         <div>
                                                             <p className="font-medium text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{member.name}</p>
@@ -276,7 +276,7 @@ export default function MembersPage() {
                                                     {unreturned.length > 0
                                                         ? <span className="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                                                             {unreturned.length} out
-                                                          </span>
+                                                        </span>
                                                         : <span className="text-xs text-gray-400">—</span>
                                                     }
                                                 </td>
@@ -312,7 +312,7 @@ export default function MembersPage() {
                                                         <button onClick={() => handleDelete(member._id, member.name)} title="Delete Member"
                                                             className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors">
                                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                                <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                                                                <path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
                                                             </svg>
                                                         </button>
                                                     </div>

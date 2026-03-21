@@ -14,7 +14,7 @@ import { savePhoto } from "@/lib/savePhoto";
 import { signQRToken } from "@/lib/qrSigner";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
+
 
 // Fields to exclude from list queries for performance (Section 6C)
 const LIST_SELECT = "-faceDescriptor -photoUrl";
@@ -24,11 +24,11 @@ import { MemberCreateSchema } from "@/lib/validators";
 
 export async function GET(req: Request) {
     try {
+        await dbConnect();
+
         const session = await getServerSession(authOptions);
         if (!session?.user)
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-        await dbConnect();
 
         const url = new URL(req.url);
         const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
@@ -73,39 +73,36 @@ export async function GET(req: Request) {
         ]);
         const combinedTotal = regularTotal + entertainmentTotal;
 
-        // Determine which collection(s) to query based on skip/limit offset
-        // Regular members come first (sorted by createdAt desc), then entertainment
         let data: any[] = [];
 
         if (skip < regularTotal) {
-            // We need some (or all) records from the regular collection
             const regularLimit = Math.min(limit, regularTotal - skip);
-            const regularMembers = await Member.find(query)
-                .select(LIST_SELECT)
-                .populate("planId", populateFields)
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(regularLimit)
-                .lean();
-            data = [...regularMembers];
+            const remaining = limit - regularLimit;
 
-            // If we still need more records, get from entertainment
-            const remaining = limit - regularMembers.length;
-            if (remaining > 0) {
-                const entertainmentMembers = await EntertainmentMember.find(query)
+            const [regularMembers, entertainmentMembers] = await Promise.all([
+                Member.find(query)
                     .select(LIST_SELECT)
                     .populate("planId", populateFields)
                     .sort({ createdAt: -1 })
-                    .skip(0)
-                    .limit(remaining)
-                    .lean();
-                data = [
-                    ...data,
-                    ...entertainmentMembers.map((m: any) => ({ ...m, _source: "entertainment" })),
-                ];
-            }
+                    .skip(skip)
+                    .limit(regularLimit)
+                    .lean(),
+                remaining > 0
+                    ? EntertainmentMember.find(query)
+                        .select(LIST_SELECT)
+                        .populate("planId", populateFields)
+                        .sort({ createdAt: -1 })
+                        .skip(0)
+                        .limit(remaining)
+                        .lean()
+                    : Promise.resolve([]),
+            ]);
+
+            data = [
+                ...regularMembers,
+                ...entertainmentMembers.map((m: any) => ({ ...m, _source: "entertainment" })),
+            ];
         } else {
-            // skip is past all regular members — only query entertainment
             const entertainmentSkip = skip - regularTotal;
             const entertainmentMembers = await EntertainmentMember.find(query)
                 .select(LIST_SELECT)
@@ -124,7 +121,7 @@ export async function GET(req: Request) {
             limit,
             totalPages: Math.ceil(combinedTotal / limit),
         }, {
-            headers: { "Cache-Control": "no-store" },
+            headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" },
         });
     } catch (error) {
         console.error("[GET /api/members]", error);
@@ -139,17 +136,19 @@ import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
     try {
-        const ip = getClientIp(req);
-        if (!checkRateLimit(ip, "member-create", 20)) {
-            return NextResponse.json({ error: "Too many member creations. Slow down." }, { status: 429 });
-        }
+        await dbConnect();
 
         const session = await getServerSession(authOptions);
         if (!session?.user)
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+        const ip = getClientIp(req);
+        if (!checkRateLimit(ip, "member-create", 20)) {
+            return NextResponse.json({ error: "Too many member creations. Slow down." }, { status: 429 });
+        }
+
         const body = await req.json();
-        
+
         // Map frontend fields to match Zod schema expectations
         const mappedBody = {
             ...body,
@@ -178,7 +177,7 @@ export async function POST(req: Request) {
             paidAmount,
             balanceAmount
         } = data;
-        
+
         // Handle photo separately (since the Zod schema expects photo as string but the UI might send photoBase64)
         const photoBase64 = body.photoBase64 || data.photo;
 
@@ -236,7 +235,7 @@ export async function POST(req: Request) {
                 console.warn("QR generation failed");
             }
         }
-        
+
         // We still need a unique token for the DB `qrToken` field as a uniqueness/fallback marker 
         // to rotate in the `Member` document. We'll use a random UUID.
         const qrToken = crypto.randomUUID();
@@ -319,8 +318,8 @@ export async function POST(req: Request) {
                     memberCollection: isEntertainment ? "entertainment_members" : "members",
                     amount: paidAmount,
                     paymentMethod: modeMap[body.paymentMode] || "cash",
-                    recordedBy: (typeof session.user.id === "string" && session.user.id.length === 24) 
-                        ? new mongoose.Types.ObjectId(session.user.id) 
+                    recordedBy: (typeof session.user.id === "string" && session.user.id.length === 24)
+                        ? new mongoose.Types.ObjectId(session.user.id)
                         : undefined,
                     status: "success",
                     notes: `Auto-recorded on member registration`,
