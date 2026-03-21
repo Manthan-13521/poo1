@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { Pool } from "@/models/Pool";
+import { PlatformAdmin } from "@/models/PlatformAdmin";
 import bcrypt from "bcryptjs";
 
 /**
  * POST /api/seed
- * Creates a demo pool + admin user for initial setup.
+ * Creates a platform super admin + demo pool + admin user for initial setup.
  *
  * ⚠️  Protected by SEED_SECRET env variable.
  * Send: Authorization: Bearer <SEED_SECRET>
@@ -33,10 +34,27 @@ export async function POST(req: NextRequest) {
 
     await dbConnect();
 
+    // 1. Seed Platform Super Admin
+    const superAdminEmail = "superadmin@tspools.com";
+    const existingSuperAdmin = await PlatformAdmin.findOne({ email: superAdminEmail });
+    if (!existingSuperAdmin) {
+        const superAdminPasswordHash = await bcrypt.hash("superadmin456", 10);
+        await PlatformAdmin.create({
+            email: superAdminEmail,
+            passwordHash: superAdminPasswordHash,
+            role: "superadmin"
+        });
+        console.log("✅ Super Admin created: superadmin@tspools.com / superadmin456");
+    }
+
+    // 2. Seed Demo Pool
     // Idempotent — don't create duplicates
-    const existing = await Pool.findOne({ slug: "demo-pool" }).lean();
-    if (existing) {
-        return NextResponse.json({ message: "Seed data already exists." }, { status: 200 });
+    const existingPool = await Pool.findOne({ slug: "demo-pool" }).lean();
+    if (existingPool) {
+        return NextResponse.json({ 
+            message: "Seed data already exists (Demo Pool). Super Admin checked.",
+            superAdmin: superAdminEmail
+        }, { status: 200 });
     }
 
     const poolId = "DEMO001";
