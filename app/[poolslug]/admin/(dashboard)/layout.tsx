@@ -3,8 +3,19 @@ import { Topbar } from "@/components/Topbar";
 import { dbConnect } from "@/lib/mongodb";
 import { Pool } from "@/models/Pool";
 import { XCircle } from "lucide-react";
+import { unstable_cache } from "next/cache";
 
 export const dynamic = "force-dynamic";
+
+const getCachedPoolStatus = unstable_cache(
+    async (slug: string) => {
+        await dbConnect();
+        const pool = await Pool.findOne({ slug }).select("subscriptionStatus poolName").lean() as any;
+        return pool ? { subscriptionStatus: pool.subscriptionStatus, poolName: pool.poolName } : null;
+    },
+    ["pool-status"],
+    { revalidate: 60 }  // recheck every 60 seconds
+);
 
 export default async function DashboardLayout({
     children,
@@ -13,9 +24,8 @@ export default async function DashboardLayout({
     children: React.ReactNode;
     params: Promise<{ poolslug: string }>;
 }) {
-    await dbConnect();
     const pSlug = await params;
-    const pool = await Pool.findOne({ slug: pSlug.poolslug }).lean() as any;
+    const pool = await getCachedPoolStatus(pSlug.poolslug);
 
     if (pool && pool.subscriptionStatus === "paused") {
         return (

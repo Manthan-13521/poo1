@@ -38,7 +38,6 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
         if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
 
         // Create a new PDF Document
-        console.log("[PDF] Starting generation for member:", member.name);
         const pdfDoc = await PDFDocument.create();
 
         // Horizontal ID Card size (similar to Aadhar/CR80)
@@ -79,8 +78,6 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
             color: rgb(0.8, 0.6, 0.1), // Gold accent
         });
 
-        console.log("[PDF] Header drawn. Embedding photo...");
-
         // Helper to get image bytes from URL (local, remote, or base64)
         async function getImageBytes(imagePath: string): Promise<{ bytes: Buffer, type: 'png' | 'jpg' } | null> {
             try {
@@ -112,8 +109,6 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
             }
             return null;
         }
-
-        console.log("[PDF] Header drawn. Embedding photo...");
 
         // Embed and Draw Photo (Left side)
         const photoSize = 100;
@@ -173,8 +168,6 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
             page.drawText(member.aadharCard, { x: textStartX + 45, y: startY, size: 11, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
             startY -= 18;
         }
-
-        console.log("[PDF] Text injected, getting Plan details...");
 
         // Plan & Expiry (Bottom bar)
         page.drawRectangle({

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { AddMemberModal } from "./AddMemberModal";
 import { Plus, Search, Download, Printer, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useThermalPrint } from "@/components/printing/useThermalPrint";
@@ -134,6 +134,7 @@ export default function MembersPage() {
             return { members: rows as Member[], total };
         },
         staleTime: PRIVATE_API_STALE_MS,
+        placeholderData: keepPreviousData,
     });
 
     const members = data?.members ?? [];
