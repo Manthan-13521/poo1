@@ -3,7 +3,6 @@ import mongoose from "mongoose";
 import { dbConnect } from "@/lib/mongodb";
 import { Member } from "@/models/Member";
 import { EntertainmentMember } from "@/models/EntertainmentMember";
-import { PoolSession } from "@/models/PoolSession";
 import { Payment } from "@/models/Payment";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";

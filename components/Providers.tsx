@@ -14,6 +14,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
                         staleTime: PRIVATE_API_STALE_MS,
                         gcTime: 5 * 60 * 1000,
                         refetchOnWindowFocus: false,
+                        refetchOnReconnect: false,
+                        retry: 1,
                     },
                 },
             })
