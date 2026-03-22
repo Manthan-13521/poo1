@@ -67,6 +67,7 @@ const planSchema = new Schema<IPlan>(
 
 planSchema.index({ poolId: 1, isActive: 1 });
 planSchema.index({ isActive: 1 }); // Section 2E
+planSchema.index({ createdAt: -1 });
 
 export const Plan: Model<IPlan> =
     mongoose.models.Plan || mongoose.model<IPlan>("Plan", planSchema);

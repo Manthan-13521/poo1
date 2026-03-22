@@ -35,7 +35,7 @@ export async function GET(req: Request) {
         const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
         const limit = Math.min(
             100,
-            Math.max(1, parseInt(url.searchParams.get("limit") ?? "10"))
+            Math.max(1, parseInt(url.searchParams.get("limit") ?? "50"))
         );
         const skip = (page - 1) * limit;
 
@@ -222,31 +222,8 @@ export async function POST(req: Request) {
             }
         }
 
-        // Generate and upload Secure JWT QR code (Section 10)
-        const qrPayloadObject = await signQRToken(memberId);
-        let qrCodeUrl = "";
-        try {
-            const qrPngBuffer = await QRCode.toBuffer(
-                qrPayloadObject,
-                { width: 300 }
-            );
-            qrCodeUrl = await uploadBuffer(
-                qrPngBuffer,
-                "swimming-pool/qrcodes",
-                `${poolId}_${memberId}_qr`
-            );
-        } catch {
-            try {
-                qrCodeUrl = await QRCode.toDataURL(qrPayloadObject, {
-                    width: 300,
-                });
-            } catch {
-                console.warn("QR generation failed");
-            }
-        }
-
-        // We still need a unique token for the DB `qrToken` field as a uniqueness/fallback marker 
-        // to rotate in the `Member` document. We'll use a random UUID.
+        // Defer QR and PDF generation to background job
+        const qrCodeUrl = "";
         const qrToken = crypto.randomUUID();
 
         // Calculate plan end date — duration is NOT multiplied by qty
@@ -309,6 +286,7 @@ export async function POST(req: Request) {
             isExpired: false,
             isDeleted: false,
             status: "active",
+            cardStatus: "pending",
         });
 
         await newMember.save();
@@ -338,10 +316,25 @@ export async function POST(req: Request) {
             }
         }
 
-        // Populate plan for response (needed for token print check on frontend)
         const savedMember = isEntertainment
             ? await EntertainmentMember.findById(newMember._id).populate("planId", "name hasTokenPrint quickDelete price")
             : await Member.findById(newMember._id).populate("planId", "name hasTokenPrint quickDelete price");
+
+        // Fire background job without awaiting
+        const baseUrl = process.env.NEXTAUTH_URL || `http://${req.headers.get("host")}`;
+        fetch(`${baseUrl}/api/jobs/generate-card`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${process.env.CRON_SECRET}`,
+            },
+            body: JSON.stringify({
+                memberObjId: newMember._id,
+                memberId,
+                poolId,
+                isEntertainment,
+            }),
+        }).catch(err => console.error("Failed to enqueue generate-card job:", err));
 
         return NextResponse.json(savedMember, { status: 201 });
     } catch (error: any) {

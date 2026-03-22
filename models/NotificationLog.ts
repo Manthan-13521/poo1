@@ -8,6 +8,7 @@ export interface INotificationLog extends Document {
     status: "sent" | "failed";
     errorDetails?: string;
     date: Date;
+    sentAt?: Date;
 }
 
 const notificationLogSchema = new Schema<INotificationLog>(
@@ -18,7 +19,8 @@ const notificationLogSchema = new Schema<INotificationLog>(
         message: { type: String, required: true },
         status: { type: String, enum: ["sent", "failed"], required: true },
         errorDetails: { type: String },
-        date: { type: Date, default: Date.now },
+        date: { type: Date, default: Date.now, index: true },
+        sentAt: { type: Date, index: true },
     },
     { timestamps: true }
 );

@@ -42,6 +42,7 @@ interface Member {
     paymentStatus: "paid" | "partial" | "pending";
     equipmentTaken: EquipmentItem[];
     createdAt: string;
+    cardStatus?: "pending" | "ready";
 }
 
 function getRowClass(member: Member): string {
@@ -103,7 +104,7 @@ export default function MembersPage() {
     const [searchDebounced, setSearchDebounced] = useState("");
     const { print: printThermal } = useThermalPrint();
 
-    const LIMIT = 10;
+    const LIMIT = 50;
 
     const invalidateMembersList = () => {
         queryClient.invalidateQueries({ queryKey: [...membersListQueryKeyPrefix] });
@@ -308,10 +309,16 @@ export default function MembersPage() {
                                                 {/* Actions */}
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm">
                                                     <div className="flex items-center gap-2">
-                                                        <a href={`/api/members/${member._id}/pdf`} download title="Download ID Card"
-                                                            className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
-                                                            <Download className="h-4 w-4" />
-                                                        </a>
+                                                        {member.cardStatus === "pending" ? (
+                                                            <button disabled title="Generating ID Card..." className="p-1.5 rounded-md text-gray-300 dark:text-gray-600 cursor-wait">
+                                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                                            </button>
+                                                        ) : (
+                                                            <a href={`/api/members/${member._id}/pdf`} download title="Download ID Card"
+                                                                className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
+                                                                <Download className="h-4 w-4" />
+                                                            </a>
+                                                        )}
                                                         {plan?.hasTokenPrint && (
                                                             <button onClick={() => handleReprint(member)} title="Reprint Token"
                                                                 className="p-1.5 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors">

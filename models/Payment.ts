@@ -11,6 +11,7 @@ export interface IPayment extends Document {
     razorpayOrderId?: string;
     idempotencyKey?: string; // Prevents duplicate payment submissions
     date: Date;
+    paidAt?: Date;
     status: "success" | "pending" | "failed" | "refunded";
     recordedBy?: mongoose.Types.ObjectId;
     notes?: string;
@@ -44,6 +45,7 @@ const paymentSchema = new Schema<IPayment>(
         // Fix #11 — idempotency key prevents duplicate payment submissions
         idempotencyKey: { type: String, sparse: true },
         date: { type: Date, default: Date.now, index: true },
+        paidAt: { type: Date, index: true },
         status: {
             type: String,
             enum: ["success", "pending", "failed", "refunded"],

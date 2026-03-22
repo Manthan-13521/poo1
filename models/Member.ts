@@ -25,6 +25,7 @@ export interface IMember extends Document {
     planQuantity: number;
     planStartDate?: Date;
     planEndDate?: Date;
+    cardStatus: "pending" | "ready";
     // Kept for backward compat
     startDate?: Date;
     expiryDate?: Date;
@@ -68,7 +69,7 @@ const equipmentItemSchema = new Schema<IEquipmentItem>(
 
 const memberSchema = new Schema<IMember>(
     {
-        memberId: { type: String, required: true },
+        memberId: { type: String, required: true, index: true },
         poolId: { type: String, required: true, index: true },
         faceScanEnabled: { type: Boolean, default: false },
         faceDescriptor: { type: [Number] },
@@ -85,7 +86,7 @@ const memberSchema = new Schema<IMember>(
         planEndDate: { type: Date, index: true },
         // Backward compat aliases
         startDate: { type: Date },
-        expiryDate: { type: Date },
+        expiryDate: { type: Date, index: true },
         totalEntriesAllowed: { type: Number, default: 1 },
         entriesUsed: { type: Number, default: 0 },
         // Payment
@@ -105,6 +106,12 @@ const memberSchema = new Schema<IMember>(
             type: String,
             required: true,
             default: () => crypto.randomUUID(),
+        },
+        cardStatus: { 
+            type: String, 
+            enum: ['pending', 'ready'], 
+            default: 'pending',
+            index: true
         },
         lastScannedAt: { type: Date },
         // Lifecycle — new boolean model (replaces status string)

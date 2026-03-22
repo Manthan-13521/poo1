@@ -31,7 +31,7 @@ const entryLogSchema = new Schema<IEntryLog>(
         },
         entryType: { type: String, enum: ["qr", "face"], default: "qr" },
         scanTime: { type: Date, default: Date.now },
-        entryTime: { type: Date },
+        entryTime: { type: Date, index: true },
         status: { type: String, enum: ["granted", "denied"], required: true },
         isValid: { type: Boolean, default: false },
         reason: { type: String },

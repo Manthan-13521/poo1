@@ -37,6 +37,8 @@ export interface IEntertainmentMember extends Document {
     // QR
     qrCodeUrl?: string;
     qrToken: string;
+    cardStatus?: "pending" | "ready";
+    pdfUrl?: string;
     lastScannedAt?: Date;
     // Lifecycle
     isActive: boolean;
@@ -92,6 +94,8 @@ const entertainmentMemberSchema = new Schema<IEntertainmentMember>(
             required: true,
             default: () => crypto.randomUUID(),
         },
+        cardStatus: { type: String, enum: ["pending", "ready"], default: "pending" },
+        pdfUrl: { type: String },
         lastScannedAt: { type: Date },
         isActive: { type: Boolean, default: true, index: true },
         isExpired: { type: Boolean, default: false, index: true },

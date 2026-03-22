@@ -25,7 +25,7 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url);
         const filterType = searchParams.get("type") || "all";
         const page   = Math.max(1, parseInt(searchParams.get("page")  ?? "1"));
-        const limit  = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") ?? "50")));
+        const limit  = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "100")));
         const skip   = (page - 1) * limit;
 
         const baseMatch: Record<string, unknown> =
