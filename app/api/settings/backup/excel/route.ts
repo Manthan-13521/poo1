@@ -22,8 +22,11 @@ export async function GET(req: Request) {
     if (authHeader === `Bearer ${process.env.CRON_SECRET || "cron123"}`) {
         isAuthorized = true;
     } else {
-        await dbConnect();
-        session = await getServerSession(authOptions);
+        const [, s] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
+        session = s;
         if (session?.user && session.user.role === "admin") {
             isAuthorized = true;
         }
@@ -206,18 +209,11 @@ export async function GET(req: Request) {
         const dateStr = new Date().toISOString().split("T")[0].replace(/-/g, "_");
         const filename = `backup_${dateStr}.xlsx`;
 
-        const backupsDir = path.join(process.cwd(), "backups");
-        const exportsDir = path.join(process.cwd(), "public", "exports");
-        fs.mkdirSync(backupsDir, { recursive: true });
-        fs.mkdirSync(exportsDir, { recursive: true });
+        // removed file-system writes (Vercel is read-only)
 
-        await workbook.xlsx.writeFile(path.join(backupsDir, filename));
-        await workbook.xlsx.writeFile(path.join(exportsDir, "members.xlsx"));
-
-        // Update lastBackupAt in settings
+        // Update lastBackupAt in settings (database write is okay)
         await Settings.updateOne({}, { $set: { lastBackupAt: new Date() } });
-        logger.info("Excel backup generated", { filename });
-
+        
         const buffer = await workbook.xlsx.writeBuffer();
 
         return new NextResponse(buffer as ArrayBuffer, {
