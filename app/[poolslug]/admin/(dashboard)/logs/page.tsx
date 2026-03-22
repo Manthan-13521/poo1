@@ -19,7 +19,8 @@ export default function LogsPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [regPage, setRegPage] = useState(1);
-    const REG_LIMIT = 7;
+    const [entryPage, setEntryPage] = useState(1);
+    const ITEMS_PER_PAGE = 9;
 
     useEffect(() => {
         setLoading(true);
@@ -50,16 +51,23 @@ export default function LogsPage() {
     const registrationLogs = filteredLogs.filter(log => log.type === "Registration");
     const entryLogs = filteredLogs.filter(log => log.type === "Entry Scan");
 
-    const totalRegPages = Math.max(1, Math.ceil(registrationLogs.length / REG_LIMIT));
-    const paginatedRegistrations = registrationLogs.slice((regPage - 1) * REG_LIMIT, regPage * REG_LIMIT);
+    const totalRegPages = Math.max(1, Math.ceil(registrationLogs.length / ITEMS_PER_PAGE));
+    const paginatedRegistrations = registrationLogs.slice((regPage - 1) * ITEMS_PER_PAGE, regPage * ITEMS_PER_PAGE);
 
-    // Reset regPage when search changes
-    useEffect(() => { setRegPage(1); }, [searchTerm]);
+    const totalEntryPages = Math.max(1, Math.ceil(entryLogs.length / ITEMS_PER_PAGE));
+    const paginatedEntries = entryLogs.slice((entryPage - 1) * ITEMS_PER_PAGE, entryPage * ITEMS_PER_PAGE);
+
+    // Reset pages when search changes
+    useEffect(() => { 
+        setRegPage(1); 
+        setEntryPage(1);
+    }, [searchTerm]);
 
     // Grouping entry logs by Local Date string
     const groupedEntries = useMemo(() => {
         const groups: Record<string, SystemLog[]> = {};
-        entryLogs.forEach(log => {
+        // We group the paginated entries so we strictly show the page items
+        paginatedEntries.forEach(log => {
             const dateStr = new Date(log.date).toLocaleDateString(undefined, {
                 weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
             });
@@ -67,7 +75,7 @@ export default function LogsPage() {
             groups[dateStr].push(log);
         });
         return groups;
-    }, [entryLogs]);
+    }, [paginatedEntries]);
 
     return (
         <div className="space-y-8">
@@ -240,6 +248,30 @@ export default function LogsPage() {
                             </tbody>
                         </table>
                     </div>
+                    {/* Pagination Footer */}
+                    {totalEntryPages > 1 && (
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">
+                                Page <span className="font-medium">{entryPage}</span> of <span className="font-medium">{totalEntryPages}</span>
+                            </span>
+                            <div className="flex space-x-2">
+                                <button
+                                    onClick={() => setEntryPage(p => Math.max(1, p - 1))}
+                                    disabled={entryPage === 1}
+                                    className="inline-flex items-center rounded-md bg-white dark:bg-gray-800 px-3 py-1 text-sm font-semibold text-gray-900 dark:text-gray-300 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Prev
+                                </button>
+                                <button
+                                    onClick={() => setEntryPage(p => Math.min(totalEntryPages, p + 1))}
+                                    disabled={entryPage === totalEntryPages}
+                                    className="inline-flex items-center rounded-md bg-white dark:bg-gray-800 px-3 py-1 text-sm font-semibold text-gray-900 dark:text-gray-300 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
