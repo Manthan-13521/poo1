@@ -21,7 +21,7 @@
     "lucide-react": "^0.577.0",
     "mongodb": "^7.1.0",
     "mongoose": "^9.2.4",
-    "next": "15.1.7",
+    "next": "16.2.1",
     "next-auth": "^4.24.13",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
@@ -42,7 +42,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.1.7",
+    "eslint-config-next": "16.2.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "tailwindcss": "^4",
     "typescript": "^5"
