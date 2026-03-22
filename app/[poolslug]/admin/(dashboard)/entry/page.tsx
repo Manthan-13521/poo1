@@ -173,9 +173,14 @@ export default function EntryPage() {
             const data = await res.json();
 
             if (res.ok) {
-                setScanResult({ success: true, message: "Entry Granted", member: data.member, occupancy: data.occupancy });
+                setScanResult({ success: true, message: "Entry Granted", occupancy: data.occupancy });
                 if (data.occupancy) {
                     setOccupancy({ current: data.occupancy.current, capacity: data.occupancy.capacity });
+                }
+
+                // Auto-trigger rich lookup for the right side
+                if (data.member?.memberId) {
+                    handleUidLookup(data.member.memberId, true);
                 }
 
                 if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -204,7 +209,8 @@ export default function EntryPage() {
             setScanResult({ success: false, message: "Network Error — Check Connection" });
         } finally {
             setLoading(false);
-            setTimeout(() => { setScanResult(null); setIsScanning(true); }, 3000);
+            // Reactivate camera quickly so they can scan the next person (2 seconds)
+            setTimeout(() => { setScanResult(null); setIsScanning(true); }, 2000);
         }
     };
 
@@ -220,22 +226,28 @@ export default function EntryPage() {
     };
 
     // ── UID Lookup ─────────────────────────────────────────────────────────
-    const handleUidLookup = async () => {
-        if (!uid.trim()) return;
+    const handleUidLookup = async (overrideUid?: string, autoClear: boolean = false) => {
+        const searchUid = (overrideUid || uid).trim();
+        if (!searchUid) return;
         setLookupLoading(true);
         setLookupError("");
         setLookupResult(null);
         try {
-            const res = await fetch(`/api/members/lookup?uid=${encodeURIComponent(uid.trim())}`);
+            const res = await fetch(`/api/members/lookup?uid=${encodeURIComponent(searchUid)}`);
             if (res.ok) {
                 const data = await res.json();
                 setLookupResult(data);
+                if (autoClear) {
+                    setTimeout(() => setLookupResult(null), 5000);
+                }
             } else {
                 const err = await res.json();
                 setLookupError(err.error || "Member not found");
+                if (autoClear) setTimeout(() => setLookupError(""), 3000);
             }
         } catch {
             setLookupError("Network error");
+            if (autoClear) setTimeout(() => setLookupError(""), 3000);
         } finally {
             setLookupLoading(false);
         }
@@ -347,59 +359,6 @@ export default function EntryPage() {
                                 </button>
                             )}
                         </div>
-
-                        {/* Scan Result Member Card */}
-                        {scanResult && scanResult.success && scanResult.member && (
-                            <div className="w-full mt-6 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-md fade-in bg-white dark:bg-gray-900 relative">
-                                {/* Header (Deep Blue) */}
-                                <div className="bg-indigo-900 px-4 py-2 flex justify-between items-center text-white shrink-0">
-                                    <span className="text-xs font-bold uppercase tracking-wider">Member ID Card</span>
-                                    <span className="text-xs font-bold bg-green-500 text-white px-2 py-0.5 rounded shadow-sm">Verified</span>
-                                </div>
-                                
-                                {/* Body */}
-                                <div className="p-5 flex gap-5 items-start">
-                                    {/* Photo Area */}
-                                    <div className="flex-shrink-0">
-                                        {scanResult.member.photoUrl ? (
-                                            <img src={scanResult.member.photoUrl} alt="" className="h-28 w-24 object-cover border-4 border-gray-100 dark:border-gray-800 rounded shadow-sm" />
-                                        ) : (
-                                            <div className="h-28 w-24 bg-gray-100 dark:bg-gray-800 border-4 border-gray-50 flex items-center justify-center rounded shadow-sm">
-                                                <UserCheck className="h-10 w-10 text-gray-400" />
-                                            </div>
-                                        )}
-                                    </div>
-                                    
-                                    {/* Details Area */}
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="text-xl font-bold text-gray-900 dark:text-white truncate">
-                                            {scanResult.member.name.toUpperCase()}
-                                        </h3>
-                                        <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">
-                                            {scanResult.member.memberId}
-                                        </p>
-                                        
-                                        <div className="mt-3 space-y-1">
-                                            {scanResult.member.planQuantity && scanResult.member.planQuantity > 1 && (
-                                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                    Group Size: <span className="font-semibold text-gray-900 dark:text-white">{scanResult.member.planQuantity}</span>
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Footer / Expiry */}
-                                {scanResult.member.expiryDate && (
-                                    <div className="bg-gray-50 dark:bg-gray-800 px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                                        <span className="text-xs text-gray-500 font-medium">Valid Till: {new Date(scanResult.member.expiryDate).toLocaleDateString()}</span>
-                                        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                                            ⏱ {getRemainingTimeText(scanResult.member.expiryDate)}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
                     </div>
                 </div>
 
@@ -427,7 +386,7 @@ export default function EntryPage() {
                                 placeholder="M0001 or MS0001"
                                 className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             />
-                            <button onClick={handleUidLookup} disabled={lookupLoading || !uid.trim()}
+                            <button onClick={() => handleUidLookup()} disabled={lookupLoading || !uid.trim()}
                                 className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                                 {lookupLoading ? "..." : "Search"}
                             </button>
