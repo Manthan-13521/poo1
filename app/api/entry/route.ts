@@ -52,7 +52,9 @@ export async function POST(req: Request) {
         const jwtVerifiedId = await verifyQRToken(qrPayload);
         if (jwtVerifiedId) {
             memberId = jwtVerifiedId;
-            providedToken = qrPayload; // Treat the JWT string as the token for logs
+            // The JWT itself is cryptographically secure, so we don't need to do string-matching 
+            // against the DB UUID qrToken.
+            providedToken = null; 
         } else if (qrPayload.includes(":")) {
             const parts = qrPayload.split(":");
             const possibleId = parts[0];
