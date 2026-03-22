@@ -30,6 +30,9 @@ const userSchema = new Schema<IUser>(
 );
 
 userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ name: 1 });
+userSchema.index({ email: 1, poolId: 1 });
+userSchema.index({ name: 1, poolId: 1 });
 userSchema.index({ poolId: 1, role: 1 });
 
 export const User: Model<IUser> =

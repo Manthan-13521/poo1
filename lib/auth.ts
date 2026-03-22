@@ -80,16 +80,7 @@ export const authOptions: NextAuthOptions = {
                     throw new Error("Super Admin not found");
                 }
 
-                let pool = null;
-                let poolNameStr = undefined;
-
-                if (credentials.poolSlug) {
-                    pool = await Pool.findOne({ slug: credentials.poolSlug }).lean();
-                    if (!pool) throw new Error("Pool not found");
-                    poolNameStr = (pool as any).poolName;
-                }
-
-                // Global login lookup OR specific pool lookup
+                // Run Pool + User lookups in parallel for speed
                 const userQuery: any = {
                     $or: [
                         { email: credentials.username },
@@ -97,11 +88,19 @@ export const authOptions: NextAuthOptions = {
                     ]
                 };
 
-                if (pool) {
-                    userQuery.poolId = (pool as any).poolId;
-                }
+                const [pool, user] = await Promise.all([
+                    credentials.poolSlug
+                        ? Pool.findOne({ slug: credentials.poolSlug }).lean()
+                        : Promise.resolve(null),
+                    UserModel.findOne(userQuery).lean() as Promise<IUser | null>,
+                ]);
 
-                const user = await UserModel.findOne(userQuery).lean() as IUser | null;
+                if (credentials.poolSlug && !pool) throw new Error("Pool not found");
+
+                // Tenant isolation: if pool was specified, verify user belongs to it
+                if (pool && user && user.poolId !== (pool as any).poolId) {
+                    throw new Error("User not found in this pool");
+                }
 
                 if (!user) {
                     throw new Error("User not found in this pool");
@@ -115,13 +114,13 @@ export const authOptions: NextAuthOptions = {
 
                 // If logged in via generic route, lookup the Pool to get the slug for session
                 let effectiveSlug = credentials.poolSlug;
+                let poolNameStr = pool ? (pool as any).poolName : undefined;
+
                 if (!effectiveSlug && user.poolId) {
-                    if (!pool) {
-                       pool = await Pool.findOne({ poolId: user.poolId }).lean();
-                    }
-                    if (pool) {
-                        effectiveSlug = (pool as any).slug;
-                        poolNameStr = (pool as any).poolName;
+                    const userPool = pool || await Pool.findOne({ poolId: user.poolId }).lean();
+                    if (userPool) {
+                        effectiveSlug = (userPool as any).slug;
+                        poolNameStr = (userPool as any).poolName;
                     }
                 }
 
