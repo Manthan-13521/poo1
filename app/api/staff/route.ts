@@ -18,9 +18,10 @@ function generateStaffId(role: string): string {
  */
 export async function GET(req: NextRequest) {
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const { searchParams } = new URL(req.url);
@@ -49,7 +50,9 @@ export async function GET(req: NextRequest) {
             Staff.countDocuments(filter),
         ]);
 
-        return NextResponse.json({ data, total, page, limit });
+        return NextResponse.json({ data, total, page, limit }, {
+            headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=30" },
+        });
     } catch (error) {
         console.error("[GET /api/staff]", error);
         return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -63,9 +66,10 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
         if (!session?.user || session.user.role !== "admin") {
             return NextResponse.json({ error: "Admin only" }, { status: 403 });
         }

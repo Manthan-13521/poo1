@@ -16,9 +16,10 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const { searchParams } = new URL(req.url);

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
     try {
-        await dbConnect();
+        const [,] = await Promise.all([dbConnect(), Promise.resolve()]);
         const { searchParams } = new URL(req.url);
         const slug = searchParams.get("slug");
 
@@ -53,7 +53,9 @@ export async function GET(req: Request) {
             Plan.countDocuments(query),
         ]);
 
-        return NextResponse.json({ data: plans, total, page, limit, totalPages: Math.ceil(total / limit) });
+        return NextResponse.json({ data: plans, total, page, limit, totalPages: Math.ceil(total / limit) }, {
+            headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=30" },
+        });
     } catch (error) {
         console.error("[GET /api/plans]", error);
         return NextResponse.json({ error: "Failed to fetch plans" }, { status: 500 });
@@ -66,9 +68,10 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
         if (!session?.user || !["admin", "superadmin"].includes(session.user.role)) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }

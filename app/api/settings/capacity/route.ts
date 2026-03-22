@@ -8,9 +8,11 @@ import { authOptions } from "@/lib/auth";
 
 export async function GET(req: Request) {
     try {
-        await dbConnect();
-        const settings = await getSettings();
-        const session = await getServerSession(authOptions);
+        const [, settings, session] = await Promise.all([
+            dbConnect(),
+            getSettings(),
+            getServerSession(authOptions),
+        ]);
 
         const url = new URL(req.url);
         const poolslug = url.searchParams.get("poolslug");
@@ -43,9 +45,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
         if (!session?.user || !["admin", "superadmin"].includes(session.user.role)) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
         }

@@ -11,9 +11,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         
         runOccupancyCleanupInBackground();
@@ -99,6 +100,8 @@ export async function GET() {
                     remainingDays: Math.ceil((new Date(m.expiryDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
                 }))
             }
+        }, {
+            headers: { "Cache-Control": "private, max-age=2, stale-while-revalidate=30" },
         });
 
     } catch (error) {

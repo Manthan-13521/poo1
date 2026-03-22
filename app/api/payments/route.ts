@@ -16,9 +16,10 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
         if (!session?.user)
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -62,6 +63,8 @@ export async function GET(req: Request) {
             page,
             limit,
             totalPages: Math.ceil(total / limit),
+        }, {
+            headers: { "Cache-Control": "private, max-age=2, stale-while-revalidate=30" },
         });
     } catch (error) {
         console.error("[GET /api/payments]", error);
@@ -76,9 +79,10 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
         if (!session?.user)
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

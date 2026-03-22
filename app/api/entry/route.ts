@@ -4,6 +4,7 @@ import { dbConnect } from "@/lib/mongodb";
 import { Member } from "@/models/Member";
 import { EntryLog } from "@/models/EntryLog";
 import { PoolSession } from "@/models/PoolSession";
+import { Pool } from "@/models/Pool";
 import { getSettings } from "@/models/Settings"; // Kept for legacy global fallback if needed
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -27,14 +28,15 @@ export async function POST(req: Request) {
     }
 
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session, body] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+            req.json(),
+        ]);
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const body = await req.json();
         const { qrPayload } = body; // Format: "memberId:qrToken"  OR legacy plain memberId
 
         if (!qrPayload) {
@@ -90,8 +92,7 @@ export async function POST(req: Request) {
             
             // Dynamic tenant occupancy lookup
             let currentOccupancy = 0;
-            const poolModel = mongoose.models.Pool || mongoose.model("Pool", new mongoose.Schema({ poolId: String, capacity: Number }));
-            const pool = await poolModel.findOne({ poolId: session.user.poolId });
+            const pool = await Pool.findOne({ poolId: session.user.poolId }).select("capacity").lean();
             const poolCapacity = pool?.capacity || 100;
             const sessionAgg = await PoolSession.aggregate([
                 { $match: { poolId: session.user.poolId, status: "active" } },
@@ -297,8 +298,7 @@ export async function POST(req: Request) {
         // ── Pool Capacity Check ──────────────────────────────────────────────
         // Dynamic tenant occupancy lookup calculation again for individual members
         let currentOccupancy = 0;
-        const poolModel = mongoose.models.Pool || mongoose.model("Pool", new mongoose.Schema({ poolId: String, capacity: Number }));
-        const pool = await poolModel.findOne({ poolId: session.user.poolId });
+        const pool = await Pool.findOne({ poolId: session.user.poolId }).select("capacity").lean();
         const poolCapacity = pool?.capacity || 100;
         const sessionAgg = await PoolSession.aggregate([
             { $match: { poolId: session.user.poolId, status: "active" } },

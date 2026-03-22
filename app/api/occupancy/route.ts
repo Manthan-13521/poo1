@@ -17,9 +17,10 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
     try {
-        await dbConnect();
-
-        const session = await getServerSession(authOptions);
+        const [, session] = await Promise.all([
+            dbConnect(),
+            getServerSession(authOptions),
+        ]);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         let poolId = session.user.poolId;
@@ -82,6 +83,8 @@ export async function GET(req: NextRequest) {
                 scanCount: h.count ?? 0,
             })),
             updatedAt: new Date().toISOString(),
+        }, {
+            headers: { "Cache-Control": "private, max-age=2, stale-while-revalidate=30" },
         });
     } catch (error) {
         console.error("[GET /api/occupancy]", error);
