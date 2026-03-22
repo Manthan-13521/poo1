@@ -103,7 +103,7 @@ export async function GET(req: Request) {
             {
                 $project: {
                     faceDescriptor: 0,
-                    // photoUrl intentionally kept so the list can show avatars
+                    photoUrl: 0,
                     "planId.features": 0,
                     "planId.description": 0,
                     "planId.memberCounter": 0,
