@@ -8,6 +8,7 @@ import type { Session } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import ExcelJS from "exceljs";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 export async function GET(req: Request) {
     const authHeader = req.headers.get("authorization");
@@ -91,6 +92,42 @@ export async function GET(req: Request) {
         logger.info("Deleted Members Excel backup generated", { filename });
 
         const buffer = await workbook.xlsx.writeBuffer();
+
+        // ── Upload to AWS S3 ───────────────────────────────────────────────────
+        if (
+            process.env.AWS_REGION &&
+            process.env.AWS_ACCESS_KEY_ID &&
+            process.env.AWS_SECRET_ACCESS_KEY &&
+            process.env.AWS_S3_BUCKET_NAME
+        ) {
+            try {
+                const s3Client = new S3Client({
+                    region: process.env.AWS_REGION,
+                    credentials: {
+                        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+                    },
+                });
+
+                // Scope backup to specific user pool
+                const poolFolder = session?.user?.poolId || "superadmin";
+                const s3Key = `backups/${poolFolder}/${filename}`;
+
+                await s3Client.send(
+                    new PutObjectCommand({
+                        Bucket: process.env.AWS_S3_BUCKET_NAME,
+                        Key: s3Key,
+                        Body: Buffer.from(buffer),
+                        ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    })
+                );
+                logger.info(`Successfully uploaded deleted-members backup to S3: ${s3Key}`);
+            } catch (s3Error) {
+                logger.error("Failed to upload deleted-members backup to S3", { error: String(s3Error) });
+            }
+        } else {
+            logger.warn("AWS S3 credentials not fully configured. Skipping remote upload.");
+        }
 
         return new NextResponse(buffer, {
             status: 200,

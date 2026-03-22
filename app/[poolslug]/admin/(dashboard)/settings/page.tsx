@@ -203,7 +203,7 @@ export default function SettingsPage() {
                                 <HardDrive className="w-5 h-5 text-indigo-500" /> Data Management
                             </h2>
                             <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-400">
-                                Export full database backups. Excel backups are also saved to <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">backups/</code>.
+                                Export full database backups. Excel backups are securely pushed to AWS S3 storage automatically.
                             </p>
                         </div>
                         <div className="md:col-span-2">
@@ -237,8 +237,8 @@ export default function SettingsPage() {
                                         Download JSON Backup
                                     </button>
                                 </div>
-                                <p className="text-xs text-gray-400 dark:text-gray-600">
-                                    Excel file is also automatically saved to <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">backups/backup_YYYY_MM_DD.xlsx</code>
+                                <p className="text-xs text-gray-400 dark:text-gray-600 pt-1">
+                                    Excel files are also securely synced to your dedicated <strong>AWS S3 Bucket</strong> automatically.
                                 </p>
                             </div>
                         </div>
