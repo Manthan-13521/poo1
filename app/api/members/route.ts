@@ -74,53 +74,39 @@ export async function GET(req: Request) {
         ]);
         const combinedTotal = regularTotal + entertainmentTotal;
 
-        // Use Aggregate for global sorting across both collections
-        const pipeline: any[] = [
-            { $match: query },
-            { $addFields: { _origin: "regular" } },
-            {
-                $unionWith: {
-                    coll: "entertainment_members",
-                    pipeline: [
-                        { $match: query },
-                        { $addFields: { _origin: "entertainment" } }
-                    ]
-                }
-            },
-            { $sort: { createdAt: -1 } },
-            { $skip: skip },
-            { $limit: limit },
-            {
-                $lookup: {
-                    from: "plans", // Collection name
-                    localField: "planId",
-                    foreignField: "_id",
-                    as: "planId"
-                }
-            },
-            { $unwind: { path: "$planId", preserveNullAndEmptyArrays: true } },
-            // Project fields for performance (similar to LIST_SELECT)
-            {
-                $project: {
-                    faceDescriptor: 0,
-                    photoUrl: 0,
-                    "planId.features": 0,
-                    "planId.description": 0,
-                    "planId.memberCounter": 0,
-                    "planId.entertainmentMemberCounter": 0,
-                }
-            }
+        // Optimized approach to handle multi-collection stack order sorting
+        // 1. Fetch lightweight refs (_id, createdAt) from both collections
+        const fetchLimit = skip + limit;
+        const [regRefs, entRefs] = await Promise.all([
+            Member.find(query).sort({ createdAt: -1 }).limit(fetchLimit).select("_id createdAt").lean(),
+            EntertainmentMember.find(query).sort({ createdAt: -1 }).limit(fetchLimit).select("_id createdAt").lean(),
+        ]);
+        
+        // 2. Combine and sort locally (very fast for thousands of lightweight objects)
+        const mergedRefs = [
+            ...regRefs.map(m => ({ id: m._id, createdAt: m.createdAt, type: "regular" })),
+            ...entRefs.map(m => ({ id: m._id, createdAt: m.createdAt, type: "entertainment" }))
         ];
-
-        const dataRaw = await Member.aggregate(pipeline);
-
-        // Map them back to the expected structure
-        const data = dataRaw.map(m => ({
-            ...m,
-            _source: m._origin === "entertainment" ? "entertainment" : undefined,
-            // Convert plain object back to match the previous .lean() structure if needed
-            // (e.g. converting _id to string or keeping it as ObjectId depending on UI needs)
-        }));
+        mergedRefs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
+        // 3. Slice exactly the ones we need for this page
+        const pageRefs = mergedRefs.slice(skip, fetchLimit);
+        
+        // 4. Fetch the full documents ONLY for the items on the current page
+        const regIds = pageRefs.filter(r => r.type === "regular").map(r => r.id);
+        const entIds = pageRefs.filter(r => r.type === "entertainment").map(r => r.id);
+        
+        const [regDocs, entDocs] = await Promise.all([
+            regIds.length ? Member.find({ _id: { $in: regIds } }).populate("planId", populateFields.join(" ")).select(LIST_SELECT).lean() : [],
+            entIds.length ? EntertainmentMember.find({ _id: { $in: entIds } }).populate("planId", populateFields.join(" ")).select(LIST_SELECT).lean() : []
+        ]);
+        
+        // 5. Build lookup map to reconstruct correct order
+        const docMap = new Map();
+        regDocs.forEach(d => docMap.set(d._id.toString(), { ...d, _source: "regular" }));
+        entDocs.forEach(d => docMap.set(d._id.toString(), { ...d, _source: "entertainment" }));
+        
+        const data = pageRefs.map(r => docMap.get(r.id.toString())).filter(Boolean);
 
         return NextResponse.json({
             data,
