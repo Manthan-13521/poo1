@@ -46,9 +46,8 @@ export async function POST(req: Request) {
             qrCodeUrl = await QRCode.toDataURL(qrPayloadObject, { width: 300 });
         }
 
-        // Update Member with QR code so PDF generation can embed it
+        // We assign qrCodeUrl to the object for the PDF generator to read it correctly
         member.qrCodeUrl = qrCodeUrl;
-        await member.save();
 
         // 2. Generate PDF ID Card
         let pdfUrl = "";
@@ -61,12 +60,16 @@ export async function POST(req: Request) {
             // Optionally, we don't block it if PDF fails. Provide fallback logic in UI.
         }
 
-        // 3. Mark as Ready
-        member.cardStatus = "ready";
+        // 3. Mark as Ready using raw update bypassing populated object cast issues
+        const updateDoc: any = { 
+            cardStatus: "ready",
+            qrCodeUrl
+        };
         if (pdfUrl) {
-            member.pdfUrl = pdfUrl;
+            updateDoc.pdfUrl = pdfUrl;
         }
-        await member.save();
+
+        await Model.updateOne({ _id: member._id }, { $set: updateDoc });
 
         return NextResponse.json({ success: true, memberId, cardStatus: "ready" });
     } catch (error) {
