@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { dbConnect } from "@/lib/mongodb";
 import { Member } from "@/models/Member";
 import { EntertainmentMember } from "@/models/EntertainmentMember";
+import { Plan } from "@/models/Plan";
 import QRCode from "qrcode";
 import { uploadBuffer } from "@/lib/local-upload";
 import { signQRToken } from "@/lib/qrSigner";
@@ -132,16 +133,16 @@ async function generatePDFBytes(member: any) {
     let startY = height - 80;
     const textStartX = 145;
 
-    page.drawText(member.name.toUpperCase(), { x: textStartX, y: startY, size: 16, font: fontBold, color: rgb(0.1, 0.1, 0.2) });
+    page.drawText(member.name ? member.name.toUpperCase() : "UNKNOWN", { x: textStartX, y: startY, size: 16, font: fontBold, color: rgb(0.1, 0.1, 0.2) });
     startY -= 24;
     page.drawText(`ID Number:`, { x: textStartX, y: startY, size: 10, font: fontRegular, color: rgb(0.4, 0.4, 0.4) });
-    page.drawText(member.memberId, { x: textStartX + 60, y: startY, size: 11, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
+    page.drawText(member.memberId || "N/A", { x: textStartX + 60, y: startY, size: 11, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
     startY -= 18;
     page.drawText(`Age:`, { x: textStartX, y: startY, size: 10, font: fontRegular, color: rgb(0.4, 0.4, 0.4) });
     page.drawText(member.age ? member.age.toString() : "N/A", { x: textStartX + 40, y: startY, size: 11, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
     startY -= 18;
     page.drawText(`Phone:`, { x: textStartX, y: startY, size: 10, font: fontRegular, color: rgb(0.4, 0.4, 0.4) });
-    page.drawText(member.phone, { x: textStartX + 45, y: startY, size: 11, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
+    page.drawText(member.phone ? member.phone.toString() : "N/A", { x: textStartX + 45, y: startY, size: 11, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
     startY -= 18;
 
     if (member.aadharCard) {
@@ -159,7 +160,14 @@ async function generatePDFBytes(member: any) {
 
     page.drawText(`Membership Plan: ${planName}`, { x: 20, y: 15, size: 11, font: fontBold, color: rgb(0.1, 0.4, 0.1) });
 
-    const expiryStr = isHourly ? new Date(member.expiryDate ?? "").toLocaleString() : new Date(member.expiryDate ?? "").toLocaleDateString();
+    const effectiveExpiryDate = member.expiryDate || member.planEndDate || "";
+    const expiryDateObj = new Date(effectiveExpiryDate);
+    
+    let expiryStr = "Invalid Date";
+    if (!isNaN(expiryDateObj.getTime())) {
+        expiryStr = isHourly ? expiryDateObj.toLocaleString() : expiryDateObj.toLocaleDateString();
+    }
+    
     page.drawText(`Valid Till: ${expiryStr}`, { x: 280, y: 15, size: 10, font: fontBold, color: rgb(0.8, 0.2, 0.2) });
 
     // QR
