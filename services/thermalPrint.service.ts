@@ -55,9 +55,9 @@ function buildReceiptHTML(data: MemberReceiptData): string {
 
     body {
       font-family: 'Courier Prime', 'Courier New', Courier, monospace;
-      font-size: 14px;
-      width: 72mm;
-      padding: 4mm;
+      font-size: 7px;
+      width: 36mm;
+      padding: 2mm;
       background: white;
       color: #000;
     }
@@ -66,47 +66,47 @@ function buildReceiptHTML(data: MemberReceiptData): string {
     .bold { font-weight: bold; }
     
     .text-line {
-      font-size: 14px;
-      letter-spacing: 0.5px;
+      font-size: 7px;
+      letter-spacing: 0.25px;
       text-align: center;
-      margin: 2px 0;
+      margin: 1px 0;
       white-space: pre;
     }
 
     .pool-name {
-      font-size: 18px;
+      font-size: 9px;
       font-weight: bold;
       text-align: center;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
     }
 
     .receipt-title {
-      font-size: 13px;
+      font-size: 6.5px;
       text-align: center;
-      margin-bottom: 4px;
-      letter-spacing: 1px;
+      margin-bottom: 2px;
+      letter-spacing: 0.5px;
     }
 
-    table { width: 100%; border-collapse: collapse; margin: 4px 0; }
-    td { padding: 2px 0; vertical-align: top; }
+    table { width: 100%; border-collapse: collapse; margin: 2px 0; }
+    td { padding: 1px 0; vertical-align: top; }
     td:first-child { width: 42%; color: #444; }
-    td:last-child { font-weight: 500; font-size: 15px; }
+    td:last-child { font-weight: 500; font-size: 7.5px; }
 
     .balance-row td { color: #cc0000; font-weight: bold; }
-    .footer { text-align: center; margin-top: 6px; font-size: 13px; }
+    .footer { text-align: center; margin-top: 3px; font-size: 6.5px; }
     .member-id {
-      font-size: 20px;
+      font-size: 10px;
       font-weight: bold;
       text-align: center;
-      letter-spacing: 3px;
-      margin: 6px 0;
+      letter-spacing: 1.5px;
+      margin: 3px 0;
     }
 
     @media print {
-      @page { width: 80mm; margin: 0; }
-      body { width: 72mm; padding: 4mm; }
+      @page { width: 40mm; margin: 0; }
+      body { width: 36mm; padding: 2mm; }
     }
   </style>
 </head>
@@ -148,8 +148,6 @@ function buildReceiptHTML(data: MemberReceiptData): string {
   <div class="member-id">${data.memberId}</div>
 
   <div class="text-line">${doubleLine}</div>
-  <div class="footer">Thank you for joining!</div>
-  <div class="footer" style="margin-top: 8px;">Visit us again 🏊</div>
   <br />
 </body>
 </html>`;
@@ -165,7 +163,7 @@ export function printThermalReceipt(data: MemberReceiptData): void {
     if (typeof window === "undefined") return; // SSR guard
 
     const html = buildReceiptHTML(data);
-    const win = window.open("", "_blank", "width=340,height=620,toolbar=0,menubar=0,scrollbars=1");
+    const win = window.open("", "_blank", "width=170,height=310,toolbar=0,menubar=0,scrollbars=1");
 
     if (!win) {
         console.warn("[ThermalPrint] Popup blocked. Please allow popups for this site.");
