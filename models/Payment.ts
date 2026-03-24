@@ -41,9 +41,9 @@ const paymentSchema = new Schema<IPayment>(
             required: true,
         },
         transactionId: { type: String },
-        razorpayOrderId: { type: String, sparse: true },
+        razorpayOrderId: { type: String, unique: true, sparse: true },
         // Fix #11 — idempotency key prevents duplicate payment submissions
-        idempotencyKey: { type: String, sparse: true },
+        idempotencyKey: { type: String, unique: true, sparse: true },
         date: { type: Date, default: Date.now, index: true },
         paidAt: { type: Date, index: true },
         status: {
@@ -57,16 +57,11 @@ const paymentSchema = new Schema<IPayment>(
     { timestamps: true }
 );
 
-// Unique idempotency key (sparse — only enforced when set)
-paymentSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
-// Sparse unique index for Razorpay orders
-paymentSchema.index({ razorpayOrderId: 1 }, { unique: true, sparse: true });
 // Compound query indexes
 paymentSchema.index({ poolId: 1, createdAt: -1 });
 paymentSchema.index({ poolId: 1, memberId: 1 });
 
 // Section 2C — additional performance indexes
-paymentSchema.index({ memberId: 1 });
 paymentSchema.index({ createdAt: -1 });
 paymentSchema.index({ paymentMethod: 1 });
 paymentSchema.index({ poolId: 1, status: 1, date: -1 });

@@ -29,7 +29,6 @@ const userSchema = new Schema<IUser>(
     { timestamps: true }
 );
 
-userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ name: 1 });
 userSchema.index({ email: 1, poolId: 1 });
 userSchema.index({ name: 1, poolId: 1 });

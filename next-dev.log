@@ -1,0 +1,16 @@
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.36:3000
+- Environments: .env.local
+✓ Ready in 374ms
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+- Experiments (use with caution):
+  · optimizePackageImports
+
+(node:11473) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"status":1} for model "Member". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:11473) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"expiryDate":1} for model "Member". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+[PDF DEBUG] Found local file: /Users/manthanjaiswal/swimming-pool-system/public/uploads/M0002_photo_1773171700332.png
+[PDF DEBUG] Found local file: /Users/manthanjaiswal/swimming-pool-system/public/uploads/M0002_qr_1773171700333.png
+ GET /api/members/M0002/pdf 200 in 1736ms (next.js: 1445ms, application-code: 291ms)
+[?25h
