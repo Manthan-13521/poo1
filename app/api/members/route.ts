@@ -266,9 +266,17 @@ export async function POST(req: Request) {
             }
         }
 
-        // Defer QR and PDF generation to background job
-        const qrCodeUrl = "";
+        // Inline QR Code Generation
         const qrToken = crypto.randomUUID();
+        const qrPayloadObject = await signQRToken(memberId);
+        let qrCodeUrl = "";
+        try {
+            const qrPngBuffer = await QRCode.toBuffer(qrPayloadObject, { width: 300 });
+            qrCodeUrl = await uploadBuffer(qrPngBuffer, "swimming-pool/qrcodes", `${poolId}_${memberId}_qr`);
+        } catch (e) {
+            console.error("QR Code local upload failed, falling back to Data URL", e);
+            qrCodeUrl = await QRCode.toDataURL(qrPayloadObject, { width: 300 });
+        }
 
         // Calculate plan end date — duration is NOT multiplied by qty
         // Qty means N people using the same plan, not extended duration
@@ -330,7 +338,7 @@ export async function POST(req: Request) {
             isExpired: false,
             isDeleted: false,
             status: "active",
-            cardStatus: "pending",
+            cardStatus: "ready",
         });
 
         await newMember.save();
@@ -364,23 +372,7 @@ export async function POST(req: Request) {
             ? await EntertainmentMember.findById(newMember._id).populate("planId", "name hasTokenPrint quickDelete price")
             : await Member.findById(newMember._id).populate("planId", "name hasTokenPrint quickDelete price");
 
-        // Fire and forget background job so it doesn't block the UI
-        const baseUrl = process.env.NEXTAUTH_URL || `http://${req.headers.get("host")}`;
-        fetch(`${baseUrl}/api/jobs/generate-card`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.CRON_SECRET}`,
-            },
-            body: JSON.stringify({
-                memberObjId: newMember._id,
-                memberId,
-                poolId,
-                isEntertainment,
-            }),
-        }).catch((err) => {
-            console.error("Failed to execute generate-card job:", err);
-        });
+        // No background job needed since generation is inline
 
         // Invalidate members cache for this pool
         invalidateCache(poolId).catch(() => {});
