@@ -5,6 +5,7 @@ import { Member } from "@/models/Member";
 import { EntertainmentMember } from "@/models/EntertainmentMember";
 import { Payment } from "@/models/Payment";
 import { getServerSession } from "next-auth";
+import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth";
 import QRCode from "qrcode";
 import crypto from "crypto";
@@ -26,12 +27,15 @@ import { getCache, setCache } from "@/lib/membersCache";
 
 export async function GET(req: Request) {
     try {
-        const [, session] = await Promise.all([
+        const [token] = await Promise.all([
+            getToken({ req: req as any }),
             dbConnect(),
-            getServerSession(authOptions),
         ]);
-        if (!session?.user)
+        
+        if (!token)
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const sessionUser = token as any; // Cast for role/poolId access
 
         const url = new URL(req.url);
         const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
@@ -46,7 +50,7 @@ export async function GET(req: Request) {
         const balanceOnly = url.searchParams.get("balanceOnly") || "";
 
         // ── Server-side cache check ──────────────────────────────────────
-        const poolKey = session.user.poolId || "superadmin";
+        const poolKey = sessionUser.poolId || "superadmin";
         const cacheKey = `members-${poolKey}-${page}-${limit}-${search}-${planFilter}-${statusFilter}-${balanceOnly}`;
         const cached = getCache(cacheKey);
         if (cached) {
@@ -57,8 +61,8 @@ export async function GET(req: Request) {
 
         // ── Build match filter ───────────────────────────────────────────
         const baseMatch: Record<string, unknown> = { isDeleted: false };
-        if (session.user.role !== "superadmin" && session.user.poolId) {
-            baseMatch.poolId = session.user.poolId;
+        if (sessionUser.role !== "superadmin" && sessionUser.poolId) {
+            baseMatch.poolId = sessionUser.poolId;
         }
 
         // Use $text search (indexed) instead of $regex (full scan)
@@ -146,19 +150,23 @@ import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
     try {
-        await dbConnect();
+        const [token, body] = await Promise.all([
+            getToken({ req: req as any }),
+            req.json(),
+            dbConnect(),
+        ]);
+        
+        if (!token)
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+        const sessionUser = token as any;
+
+        // Rate limiting for member creation (Section 4)
+        const { checkRateLimit, getClientIp } = await import("@/lib/rateLimit");
         const ip = getClientIp(req);
         if (!checkRateLimit(ip, "member-create", 20)) {
             return NextResponse.json({ error: "Too many member creations. Slow down." }, { status: 429 });
         }
-
-        const [session, body] = await Promise.all([
-            getServerSession(authOptions),
-            req.json(),
-        ]);
-        if (!session?.user)
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         // Map frontend fields to match Zod schema expectations
         const mappedBody = {
@@ -198,8 +206,8 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Invalid Plan" }, { status: 400 });
 
         const poolId =
-            session.user.role !== "superadmin"
-                ? session.user.poolId
+            sessionUser.role !== "superadmin"
+                ? sessionUser.poolId
                 : body.poolId;
 
         if (!poolId)
@@ -305,8 +313,8 @@ export async function POST(req: Request) {
                     memberCollection: isEntertainment ? "entertainment_members" : "members",
                     amount: paidAmount,
                     paymentMethod: modeMap[body.paymentMode] || "cash",
-                    recordedBy: (typeof session.user.id === "string" && session.user.id.length === 24)
-                        ? new mongoose.Types.ObjectId(session.user.id)
+                    recordedBy: (typeof sessionUser.id === "string" && sessionUser.id.length === 24)
+                        ? new mongoose.Types.ObjectId(sessionUser.id)
                         : undefined,
                     status: "success",
                     notes: `Auto-recorded on member registration`,

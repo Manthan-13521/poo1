@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { AddMemberModal } from "./AddMemberModal";
-import { Plus, Search, Download, Printer, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Plus, Search, Download, Printer, ChevronLeft, ChevronRight, RefreshCw, User as UserIcon } from "lucide-react";
+import Image from "next/image";
 import { useThermalPrint } from "@/components/printing/useThermalPrint";
 import { PRIVATE_API_STALE_MS, membersListQueryKeyPrefix } from "@/lib/apiCache";
 
@@ -312,10 +313,18 @@ export default function MembersPage() {
                                                 <td className="whitespace-nowrap py-4 pl-6 pr-3 text-sm">
                                                     <a href={`members/${member._id}`} className="flex items-center gap-3 group">
                                                         {member.photoUrl
-                                                            ? <img src={member.photoUrl} alt="" className="h-9 w-9 rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700" />
-                                                            : <div className="h-9 w-9 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center">
-                                                                <span className="text-indigo-700 dark:text-indigo-300 font-bold text-sm">{member.name.charAt(0).toUpperCase()}</span>
-                                                            </div>
+                                                            ? <Image 
+                                                                src={member.photoUrl} 
+                                                                alt={member.name} 
+                                                                width={36} 
+                                                                height={36} 
+                                                                className="h-9 w-9 rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700"
+                                                                loading="lazy"
+                                                                quality={40}
+                                                              />
+                                                            : <div className="h-9 w-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center ring-1 ring-gray-200 dark:ring-gray-700">
+                                                                <UserIcon className="h-5 w-5 text-gray-400" />
+                                                              </div>
                                                         }
                                                         <div>
                                                             <p className="font-medium text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{member.name}</p>
