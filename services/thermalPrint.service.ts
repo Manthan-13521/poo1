@@ -59,46 +59,46 @@ function buildReceiptHTML(data: MemberReceiptData): string {
       padding: 0mm 4mm;
       background: white;
       color: #000;
-      line-height: 1.5;
+      line-height: 1.1; /* SQUASHED */
     }
 
     .text-line {
       font-size: 11.5px;
       text-align: center;
-      margin: 4px 0;
+      margin: 1px 0; /* SQUASHED */
       color: #666;
       white-space: nowrap;
       overflow: hidden;
     }
 
     .pool-name {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: bold;
       text-align: center;
       text-transform: uppercase;
-      margin-bottom: 8px;
-      margin-top: 8px;
+      margin-bottom: 2px; /* SQUASHED */
+      margin-top: 2px; /* SQUASHED */
     }
 
     .member-id {
       font-size: 14px;
       text-align: center;
-      margin: 4px 0;
+      margin: 2px 0; /* SQUASHED */
     }
 
     .row {
-      margin-bottom: 2px;
+      margin-bottom: 0px; /* SQUASHED */
       padding-left: 2px;
     }
     
     .total-row {
       text-align: center;
-      margin: 6px 0;
+      margin: 2px 0; /* SQUASHED */
     }
 
     @media print {
       @page { width: 80mm; margin: 0; }
-      body { width: 72mm; padding: 2mm 4mm; }
+      body { width: 72mm; padding: 0mm 2mm; } /* SQUASHED */
     }
   </style>
 </head>
