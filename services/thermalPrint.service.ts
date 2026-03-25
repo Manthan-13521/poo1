@@ -89,8 +89,8 @@ function buildReceiptHTML(data: MemberReceiptData): string {
 
     table { width: 100%; border-collapse: collapse; margin: 1px 0; }
     td { padding: 0px 0; vertical-align: top; }
-    td:first-child { width: 38%; color: #333; }
-    td:last-child { font-weight: bold; font-size: 10.5px; }
+    td:first-child { width: 1%; white-space: nowrap; color: #333; padding-right: 2px; }
+    td:last-child { font-weight: bold; font-size: 10.5px; word-break: break-word; }
 
     .member-id {
       font-size: 13.5px;
@@ -117,30 +117,30 @@ function buildReceiptHTML(data: MemberReceiptData): string {
   <div class="text-line">${dashedLine}</div>
 
   <table>
-    <tr><td>Name</td><td>: ${data.name}</td></tr>
-    <tr><td>Phone</td><td>: ${data.phone}</td></tr>
+    <tr><td>Name</td><td>:${data.name}</td></tr>
+    <tr><td>Phone</td><td>:${data.phone}</td></tr>
   </table>
 
   <div class="text-line">${dashedLine}</div>
 
   <table>
-    <tr><td>Plan</td><td>: ${data.planName}</td></tr>
-    <tr><td>Qty</td><td>: ${data.planQty} unit${data.planQty > 1 ? "s" : ""}</td></tr>
-    <tr><td>Total Price</td><td>: ${formatCurrency(data.planPrice)}</td></tr>
+    <tr><td>Plan</td><td>:${data.planName}</td></tr>
+    <tr><td>Qty</td><td>:${data.planQty} unit${data.planQty > 1 ? "s" : ""}</td></tr>
+    <tr><td>Total</td><td>:${formatCurrency(data.planPrice)}</td></tr>
   </table>
 
   <div class="text-line">${dashedLine}</div>
 
   <table>
-    <tr><td>Paid</td><td>: ${formatCurrency(data.paidAmount)}</td></tr>
-    <tr><td>Balance</td><td>: ${formatCurrency(data.balance > 0 ? data.balance : 0)}</td></tr>
+    <tr><td>Paid</td><td>:${formatCurrency(data.paidAmount)}</td></tr>
+    <tr><td>Balance</td><td>:${formatCurrency(data.balance > 0 ? data.balance : 0)}</td></tr>
   </table>
 
   <div class="text-line">${dashedLine}</div>
 
   <table>
-    <tr><td>Date</td><td>: ${formatDate(data.registeredAt)} &nbsp;${formatTime(data.registeredAt)}</td></tr>
-    <tr><td>Valid Till</td><td>: ${formatDate(data.validTill)} &nbsp;${formatTime(data.validTill)}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${formatTime(data.validTill)}</td></tr>
+    <tr><td>Date</td><td>:${formatDate(data.registeredAt)} &nbsp;${formatTime(data.registeredAt)}</td></tr>
+    <tr><td>Till</td><td>:${formatDate(data.validTill)} &nbsp;${formatTime(data.validTill)}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${formatTime(data.validTill)}</td></tr>
   </table>
 
   <div class="text-line">${doubleLine}</div>
