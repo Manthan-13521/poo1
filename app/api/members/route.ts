@@ -23,7 +23,7 @@ const LIST_SELECT = "-faceDescriptor -photoUrl";
 import { generateMemberId } from "@/lib/generateMemberId";
 import { MemberCreateSchema } from "@/lib/validators";
 
-import { getCache, setCache } from "@/lib/membersCache";
+import { getCache, setCache, invalidateCache } from "@/lib/membersCache";
 
 export async function GET(req: Request) {
     try {
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
         if (!token)
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const sessionUser = token as any; // Cast for role/poolId access
+        const sessionUser = token as any;
 
         const url = new URL(req.url);
         const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
@@ -49,10 +49,10 @@ export async function GET(req: Request) {
         const statusFilter = url.searchParams.get("status") || "";
         const balanceOnly = url.searchParams.get("balanceOnly") || "";
 
-        // ── Server-side cache check ──────────────────────────────────────
+        // ── Cache check (Redis → in-memory fallback) ─────────────────────
         const poolKey = sessionUser.poolId || "superadmin";
         const cacheKey = `members-${poolKey}-${page}-${limit}-${search}-${planFilter}-${statusFilter}-${balanceOnly}`;
-        const cached = getCache(cacheKey);
+        const cached = await getCache(cacheKey);
         if (cached) {
             return NextResponse.json(cached, {
                 headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" },
@@ -65,7 +65,6 @@ export async function GET(req: Request) {
             baseMatch.poolId = sessionUser.poolId;
         }
 
-        // Use $text search (indexed) instead of $regex (full scan)
         if (search) {
             baseMatch.$text = { $search: search };
         }
@@ -74,15 +73,8 @@ export async function GET(req: Request) {
         if (statusFilter === "expired") baseMatch.isExpired = true;
         if (balanceOnly === "true") baseMatch.balanceAmount = { $gt: 0 };
 
-        // ── Single aggregation pipeline with $unionWith ──────────────────
-        const projectFields = {
-            name: 1, phone: 1, memberId: 1, planId: 1,
-            planQuantity: 1, planEndDate: 1, expiryDate: 1,
-            isExpired: 1, isDeleted: 1, paidAmount: 1,
-            balanceAmount: 1, paymentStatus: 1, equipmentTaken: 1,
-            createdAt: 1, cardStatus: 1, age: 1, photoUrl: 1,
-            _source: 1,
-        };
+        // ── Aggregation pipeline with $unionWith + verdict computation ──
+        const now = new Date();
 
         const pipeline: mongoose.PipelineStage[] = [
             { $match: baseMatch },
@@ -99,7 +91,7 @@ export async function GET(req: Request) {
             { $sort: { createdAt: -1 as const } },
             { $skip: skip },
             { $limit: limit },
-            // Populate planId via $lookup
+            // ── Populate planId via $lookup ──
             {
                 $lookup: {
                     from: "plans",
@@ -112,10 +104,94 @@ export async function GET(req: Request) {
                 },
             },
             { $addFields: { planId: { $arrayElemAt: ["$_plan", 0] } } },
-            { $project: { ...projectFields, _plan: 0, faceDescriptor: 0 } },
+            // ── Compute verdict, daysLeft, verdictClass server-side ──
+            {
+                $addFields: {
+                    _endDate: { $ifNull: ["$planEndDate", "$expiryDate"] },
+                },
+            },
+            {
+                $addFields: {
+                    _msLeft: { $subtract: [{ $ifNull: ["$_endDate", now] }, now] },
+                },
+            },
+            {
+                $addFields: {
+                    daysLeft: {
+                        $cond: {
+                            if: { $lte: ["$_msLeft", 0] },
+                            then: 0,
+                            else: { $ceil: { $divide: ["$_msLeft", 86400000] } },
+                        },
+                    },
+                    verdict: {
+                        $switch: {
+                            branches: [
+                                { case: { $eq: ["$isDeleted", true] }, then: "DELETED" },
+                                {
+                                    case: {
+                                        $or: [
+                                            { $eq: ["$isExpired", true] },
+                                            { $lte: ["$_msLeft", 0] },
+                                        ],
+                                    },
+                                    then: "EXPIRED",
+                                },
+                                {
+                                    case: { $lte: ["$_msLeft", 604800000] }, // 7 days in ms
+                                    then: "EXPIRING",
+                                },
+                            ],
+                            default: "ACTIVE",
+                        },
+                    },
+                },
+            },
+            {
+                $addFields: {
+                    verdictClass: {
+                        $switch: {
+                            branches: [
+                                { case: { $eq: ["$verdict", "DELETED"] }, then: "bg-gray-100 text-gray-600 ring-gray-500/20 dark:bg-gray-800 dark:text-gray-400" },
+                                { case: { $eq: ["$verdict", "EXPIRED"] }, then: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400" },
+                                { case: { $eq: ["$verdict", "EXPIRING"] }, then: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400" },
+                            ],
+                            default: "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-500/10 dark:text-green-400",
+                        },
+                    },
+                    rowClass: {
+                        $switch: {
+                            branches: [
+                                { case: { $in: ["$verdict", ["DELETED", "EXPIRED"]] }, then: "bg-red-50 dark:bg-red-950/30" },
+                                { case: { $eq: ["$verdict", "EXPIRING"] }, then: "bg-amber-50 dark:bg-amber-950/30" },
+                            ],
+                            default: "",
+                        },
+                    },
+                    daysLeftLabel: {
+                        $switch: {
+                            branches: [
+                                { case: { $eq: ["$verdict", "DELETED"] }, then: "Deleted" },
+                                { case: { $eq: ["$verdict", "EXPIRED"] }, then: "Expired" },
+                                {
+                                    case: { $and: [{ $gt: ["$daysLeft", 0] }, { $lte: ["$daysLeft", 1] }] },
+                                    then: "Expires today",
+                                },
+                            ],
+                            default: { $concat: [{ $toString: "$daysLeft" }, " days left"] },
+                        },
+                    },
+                },
+            },
+            // ── Final projection — exclude heavy/temp fields ──
+            {
+                $project: {
+                    _plan: 0, faceDescriptor: 0,
+                    _endDate: 0, _msLeft: 0,
+                },
+            },
         ];
 
-        // Count total across both collections in parallel with aggregation
         const [data, regularTotal, entertainmentTotal] = await Promise.all([
             Member.aggregate(pipeline),
             Member.countDocuments(baseMatch),
@@ -131,8 +207,8 @@ export async function GET(req: Request) {
             totalPages: Math.ceil(total / limit),
         };
 
-        // Cache the response
-        setCache(cacheKey, response);
+        // Cache response (async, non-blocking)
+        setCache(cacheKey, response).catch(() => {});
 
         return NextResponse.json(response, {
             headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" },
@@ -345,6 +421,9 @@ export async function POST(req: Request) {
         }).catch((err) => {
             console.error("Failed to execute generate-card job:", err);
         });
+
+        // Invalidate members cache for this pool
+        invalidateCache(poolId).catch(() => {});
 
         return NextResponse.json(savedMember, { status: 201 });
     } catch (error: any) {

@@ -1,43 +1,94 @@
+import { redis } from "./redis";
+
 /**
- * Simple in-memory TTL cache for API responses.
- * Avoids hitting MongoDB on every paginated request.
- * TTL = 10 seconds — short enough to stay fresh, long enough to absorb bursts.
+ * Hybrid cache: Upstash Redis (production) with in-memory fallback (dev).
+ * TTL: 10 seconds for member list responses.
  */
 
-interface CacheEntry {
-    data: unknown;
-    expiry: number;
-}
+const CACHE_TTL = 10; // seconds
+const CACHE_PREFIX = "members:";
 
-const cache = new Map<string, CacheEntry>();
-const TTL = 10_000; // 10 seconds
+// ── In-memory fallback (for dev without Redis) ───────────────────────
+interface MemCacheEntry { data: unknown; expiry: number }
+const memCache = new Map<string, MemCacheEntry>();
 
-export function getCache(key: string): unknown | null {
-    const entry = cache.get(key);
+// ── GET ──────────────────────────────────────────────────────────────
+export async function getCache(key: string): Promise<unknown | null> {
+    const fullKey = CACHE_PREFIX + key;
+
+    // Try Redis first
+    if (redis) {
+        try {
+            const cached = await redis.get(fullKey);
+            if (cached) return cached;
+        } catch (err) {
+            console.warn("[Cache] Redis GET failed, falling back to memory:", err);
+        }
+    }
+
+    // In-memory fallback
+    const entry = memCache.get(fullKey);
     if (!entry) return null;
     if (Date.now() > entry.expiry) {
-        cache.delete(key);
+        memCache.delete(fullKey);
         return null;
     }
     return entry.data;
 }
 
-export function setCache(key: string, data: unknown): void {
-    cache.set(key, { data, expiry: Date.now() + TTL });
+// ── SET ──────────────────────────────────────────────────────────────
+export async function setCache(key: string, data: unknown): Promise<void> {
+    const fullKey = CACHE_PREFIX + key;
 
-    // Prevent unbounded growth — evict oldest entries if cache exceeds 200 keys
-    if (cache.size > 200) {
-        const firstKey = cache.keys().next().value;
-        if (firstKey) cache.delete(firstKey);
+    // Try Redis
+    if (redis) {
+        try {
+            await redis.set(fullKey, JSON.stringify(data), { ex: CACHE_TTL });
+            return;
+        } catch (err) {
+            console.warn("[Cache] Redis SET failed, falling back to memory:", err);
+        }
+    }
+
+    // In-memory fallback
+    memCache.set(fullKey, { data, expiry: Date.now() + CACHE_TTL * 1000 });
+    // Evict oldest if too many entries
+    if (memCache.size > 200) {
+        const firstKey = memCache.keys().next().value;
+        if (firstKey) memCache.delete(firstKey);
     }
 }
 
-export function invalidateCache(prefix?: string): void {
-    if (!prefix) {
-        cache.clear();
-        return;
+// ── INVALIDATE ──────────────────────────────────────────────────────
+export async function invalidateCache(poolId?: string): Promise<void> {
+    // Clear in-memory
+    if (!poolId) {
+        memCache.clear();
+    } else {
+        const prefix = CACHE_PREFIX + `members-${poolId}`;
+        for (const k of memCache.keys()) {
+            if (k.startsWith(prefix)) memCache.delete(k);
+        }
     }
-    for (const key of cache.keys()) {
-        if (key.startsWith(prefix)) cache.delete(key);
+
+    // Clear Redis — scan and delete matching keys
+    if (redis) {
+        try {
+            const pattern = poolId
+                ? `${CACHE_PREFIX}members-${poolId}*`
+                : `${CACHE_PREFIX}*`;
+
+            // Use scan to find all matching keys
+            let cursor = 0;
+            do {
+                const [nextCursor, keys] = await redis.scan(cursor, { match: pattern, count: 100 });
+                cursor = Number(nextCursor);
+                if (keys.length > 0) {
+                    await redis.del(...keys);
+                }
+            } while (cursor !== 0);
+        } catch (err) {
+            console.warn("[Cache] Redis invalidation failed:", err);
+        }
     }
 }

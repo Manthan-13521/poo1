@@ -44,58 +44,17 @@ interface Member {
     equipmentTaken: EquipmentItem[];
     createdAt: string;
     cardStatus?: "pending" | "ready";
+    // Server-computed verdict fields
+    verdict: "ACTIVE" | "EXPIRING" | "EXPIRED" | "DELETED";
+    daysLeft: number;
+    verdictClass: string;
+    rowClass: string;
+    daysLeftLabel: string;
 }
 
-function getRowClass(member: Member): string {
-    if (member.isExpired || member.isDeleted) {
-        return "bg-red-50 dark:bg-red-950/30";
-    }
-    const endDate = new Date(member.planEndDate || member.expiryDate || "");
-    const msLeft = endDate.getTime() - Date.now();
-    if (msLeft < 0) return "bg-red-50 dark:bg-red-950/30";
-    const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-    if (daysLeft <= 7) {
-        return "bg-amber-50 dark:bg-amber-950/30";
-    }
-    return "";
-}
-
-function daysLeftLabel(member: Member): string {
-    if (member.isDeleted) return "Deleted";
-    if (member.isExpired) return "Expired";
-    const endDate = new Date(member.planEndDate || member.expiryDate || "");
-    const msLeft = endDate.getTime() - Date.now();
-    if (msLeft < 0) return "Expired"; // Fix: any negative ms is expired
-
-    // Check if it's less than 24 hours
-    if (msLeft < 1000 * 60 * 60 * 24) {
-        const hrs = Math.floor(msLeft / (1000 * 60 * 60));
-        const mins = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60));
-        if (hrs > 0) return `${hrs}h ${mins}m left`;
-        return `${mins}m left`;
-    }
-
-    const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-    if (daysLeft === 0) return "Expires today";
-    if (daysLeft === 1) return "1 day left";
-    return `${daysLeft} days left`;
-}
-
-function statusBadge(member: Member) {
-    if (member.isDeleted) return { label: "DELETED", cls: "bg-gray-100 text-gray-600 ring-gray-500/20 dark:bg-gray-800 dark:text-gray-400" };
-    if (member.isExpired) return { label: "EXPIRED", cls: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400" };
-    const endDate = new Date(member.planEndDate || member.expiryDate || "");
-    const msLeft = endDate.getTime() - Date.now();
-    if (msLeft < 0) return { label: "EXPIRED", cls: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400" };
-
-    if (msLeft < 1000 * 60 * 60 * 24) {
-        return { label: "EXPIRES TODAY", cls: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400" };
-    }
-
-    const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-    if (daysLeft <= 7) return { label: "EXPIRING", cls: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400" };
-    return { label: "ACTIVE", cls: "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-500/10 dark:text-green-400" };
-}
+// Verdict computation is now done server-side in the API aggregation pipeline.
+// The API returns: verdict, daysLeft, verdictClass, rowClass, daysLeftLabel
+// No client-side date calculations needed.
 
 export default function MembersPage() {
     const queryClient = useQueryClient();
@@ -143,15 +102,12 @@ export default function MembersPage() {
     const total = data?.total ?? 0;
     const loading = isFetching;
 
-    // ── Pre-compute row styles, status, and dates for all members ──────
+    // ── Pre-compute only the parsed date (everything else is API-provided) ──
     const processedMembers = useMemo(() => {
-        return members.map((member) => {
-            const endDate = new Date(member.planEndDate || member.expiryDate || "");
-            const rowCls = getRowClass(member);
-            const badge = statusBadge(member);
-            const daysLabel = daysLeftLabel(member);
-            return { ...member, _endDate: endDate, _rowCls: rowCls, _badge: badge, _daysLabel: daysLabel };
-        });
+        return members.map((member) => ({
+            ...member,
+            _endDate: new Date(member.planEndDate || member.expiryDate || ""),
+        }));
     }, [members]);
 
     // ── Prefetch next page for instant pagination ──────────────────────
@@ -301,14 +257,12 @@ export default function MembersPage() {
                                     ) : processedMembers.length === 0 ? (
                                         <tr><td colSpan={8} className="py-12 text-center text-gray-500">No members found.</td></tr>
                                     ) : processedMembers.map((member) => {
-                                        const { label, cls } = member._badge;
-                                        const rowCls = member._rowCls;
                                         const plan = member.planId as Plan;
                                         const unreturned = (member.equipmentTaken ?? []).filter(e => !e.isReturned);
                                         const endDate = member._endDate;
 
                                         return (
-                                            <tr key={member._id} className={`${rowCls} transition-colors`}>
+                                            <tr key={member._id} className={`${member.rowClass || ""} transition-colors`}>
                                                 {/* Member */}
                                                 <td className="whitespace-nowrap py-4 pl-6 pr-3 text-sm">
                                                     <a href={`members/${member._id}`} className="flex items-center gap-3 group">
@@ -363,11 +317,11 @@ export default function MembersPage() {
                                                 {/* Valid Till */}
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
                                                     <p>{endDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
-                                                    <p className="text-xs text-gray-400">{member._daysLabel}</p>
+                                                    <p className="text-xs text-gray-400">{member.daysLeftLabel}</p>
                                                 </td>
                                                 {/* Status badge */}
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                                                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${cls}`}>{label}</span>
+                                                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${member.verdictClass}`}>{member.verdict}</span>
                                                 </td>
                                                 {/* Actions */}
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm">

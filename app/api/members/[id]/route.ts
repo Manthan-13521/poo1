@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
 import { EntertainmentMember } from "@/models/EntertainmentMember";
+import { invalidateCache } from "@/lib/membersCache";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -74,6 +75,9 @@ export async function PATCH(req: Request, props: RouteContext) {
 
         if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
 
+        // Invalidate members list cache
+        invalidateCache(member.poolId).catch(() => {});
+
         return NextResponse.json(member);
     } catch (error) {
         console.error("[PATCH /api/members/[id]]", error);
@@ -114,6 +118,9 @@ export async function DELETE(req: Request, props: RouteContext) {
         }
 
         if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+
+        // Invalidate members list cache
+        invalidateCache(member.poolId).catch(() => {});
 
         return NextResponse.json({ message: "Member soft-deleted successfully." });
     } catch (error) {
