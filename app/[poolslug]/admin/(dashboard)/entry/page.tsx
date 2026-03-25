@@ -2,8 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import { Scanner } from "@yudiel/react-qr-scanner";
+import dynamic from "next/dynamic";
 import { UserCheck, UserX, ScanFace, WifiOff, Wifi, Users, Search, ScanLine, X } from "lucide-react";
+
+const Scanner = dynamic(
+    () => import("@yudiel/react-qr-scanner").then((mod) => mod.Scanner),
+    { ssr: false, loading: () => <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">Loading scanner…</div> }
+);
 
 
 interface ScanResult {

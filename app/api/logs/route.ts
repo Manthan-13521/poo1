@@ -37,6 +37,7 @@ export async function GET(req: Request) {
         const [entriesRaw, payments, regularRegistrations, entertainmentRegistrations] = await Promise.all([
             (filterType === "all" || filterType === "entry")
                 ? EntryLog.find({ ...baseMatch, status: { $in: ["granted", "denied"] } })
+                      .select("memberId poolId scanTime status reason entryType numPersons")
                       .sort({ scanTime: -1 })
                       .limit(200)
                       .lean()
@@ -44,6 +45,7 @@ export async function GET(req: Request) {
             Promise.resolve([]),
             (filterType === "all" || filterType === "registration")
                 ? Member.find({ ...baseMatch, isDeleted: false })
+                      .select("name memberId photoUrl planId createdAt")
                       .sort({ createdAt: -1 })
                       .limit(200)
                       .lean()

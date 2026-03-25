@@ -142,6 +142,24 @@ export default function MembersPage() {
     const total = data?.total ?? 0;
     const loading = isFetching;
 
+    // ── Auto-poll when any member has cardStatus === "pending" ──────────
+    useEffect(() => {
+        const hasPending = members.some((m) => m.cardStatus === "pending");
+        if (!hasPending) return;
+
+        const startTime = Date.now();
+        const interval = setInterval(() => {
+            // Stop after 60 seconds to avoid infinite polling
+            if (Date.now() - startTime > 60_000) {
+                clearInterval(interval);
+                return;
+            }
+            invalidateMembersList();
+        }, 3000);
+
+        return () => clearInterval(interval);
+    }, [members]);
+
     const handleDelete = async (id: string, name: string) => {
         if (!confirm(`Soft-delete ${name}? They can be restored later.`)) return;
         try {
