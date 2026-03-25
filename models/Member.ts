@@ -152,7 +152,7 @@ memberSchema.index(
   { name: "text", phone: "text", memberId: "text" },
   { weights: { memberId: 3, name: 2, phone: 1 } }
 );
-memberSchema.index({ planId: 1 });
+// planId standalone index removed — covered by compound index { poolId: 1, planId: 1 }
 // TODO: migrate photoUrl from base64 to URL after running photo migration script
 
 // ── Method: rotate QR token after each successful scan ───────────────

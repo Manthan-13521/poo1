@@ -17,7 +17,8 @@ export async function dbConnect() {
   if (!cached.promise) {
     cached.promise = mongoose.connect(MONGODB_URI, {
       bufferCommands: false,
-      maxPoolSize: 10,
+      maxPoolSize: 20,
+      serverSelectionTimeoutMS: 5000,
     }).catch(err => {
       cached.promise = null;
       throw err;

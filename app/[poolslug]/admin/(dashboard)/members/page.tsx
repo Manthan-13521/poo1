@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { AddMemberModal } from "./AddMemberModal";
 import { Plus, Search, Download, Printer, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
@@ -138,9 +138,45 @@ export default function MembersPage() {
         placeholderData: keepPreviousData,
     });
 
-    const members = data?.members ?? [];
+    const members = useMemo(() => data?.members ?? [], [data]);
     const total = data?.total ?? 0;
     const loading = isFetching;
+
+    // ── Pre-compute row styles, status, and dates for all members ──────
+    const processedMembers = useMemo(() => {
+        return members.map((member) => {
+            const endDate = new Date(member.planEndDate || member.expiryDate || "");
+            const rowCls = getRowClass(member);
+            const badge = statusBadge(member);
+            const daysLabel = daysLeftLabel(member);
+            return { ...member, _endDate: endDate, _rowCls: rowCls, _badge: badge, _daysLabel: daysLabel };
+        });
+    }, [members]);
+
+    // ── Prefetch next page for instant pagination ──────────────────────
+    useEffect(() => {
+        const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+        if (page < totalPages) {
+            const nextPage = page + 1;
+            queryClient.prefetchQuery({
+                queryKey: [...membersListQueryKeyPrefix, nextPage, searchDebounced, LIMIT],
+                queryFn: async () => {
+                    const params = new URLSearchParams({
+                        page: String(nextPage),
+                        limit: String(LIMIT),
+                        ...(searchDebounced ? { search: searchDebounced } : {}),
+                    });
+                    const res = await fetch(`/api/members?${params}`);
+                    if (!res.ok) throw new Error("Failed to fetch members");
+                    const json = await res.json();
+                    const rows = Array.isArray(json) ? json : (json.data ?? []);
+                    const t = json.total ?? rows.length;
+                    return { members: rows as Member[], total: t };
+                },
+                staleTime: PRIVATE_API_STALE_MS,
+            });
+        }
+    }, [page, searchDebounced, total, queryClient]);
 
     // ── Auto-poll when any member has cardStatus === "pending" ──────────
     useEffect(() => {
@@ -261,14 +297,14 @@ export default function MembersPage() {
                                         <tr><td colSpan={8} className="py-12 text-center">
                                             <RefreshCw className="animate-spin h-5 w-5 mx-auto text-indigo-500" />
                                         </td></tr>
-                                    ) : members.length === 0 ? (
+                                    ) : processedMembers.length === 0 ? (
                                         <tr><td colSpan={8} className="py-12 text-center text-gray-500">No members found.</td></tr>
-                                    ) : members.map((member) => {
-                                        const { label, cls } = statusBadge(member);
-                                        const rowCls = getRowClass(member);
+                                    ) : processedMembers.map((member) => {
+                                        const { label, cls } = member._badge;
+                                        const rowCls = member._rowCls;
                                         const plan = member.planId as Plan;
                                         const unreturned = (member.equipmentTaken ?? []).filter(e => !e.isReturned);
-                                        const endDate = new Date(member.planEndDate || member.expiryDate || "");
+                                        const endDate = member._endDate;
 
                                         return (
                                             <tr key={member._id} className={`${rowCls} transition-colors`}>
@@ -318,7 +354,7 @@ export default function MembersPage() {
                                                 {/* Valid Till */}
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600 dark:text-gray-400">
                                                     <p>{endDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
-                                                    <p className="text-xs text-gray-400">{daysLeftLabel(member)}</p>
+                                                    <p className="text-xs text-gray-400">{member._daysLabel}</p>
                                                 </td>
                                                 {/* Status badge */}
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm">

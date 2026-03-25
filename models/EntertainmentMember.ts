@@ -113,7 +113,7 @@ const entertainmentMemberSchema = new Schema<IEntertainmentMember>(
 entertainmentMemberSchema.index({ poolId: 1, memberId: 1 }, { unique: true });
 entertainmentMemberSchema.index({ poolId: 1, phone: 1 });
 entertainmentMemberSchema.index({ poolId: 1, planId: 1 });
-entertainmentMemberSchema.index({ planId: 1 });
+// planId standalone index removed — covered by compound index above
 entertainmentMemberSchema.index({ poolId: 1, planEndDate: 1 });
 entertainmentMemberSchema.index({ poolId: 1, balanceAmount: 1 });
 entertainmentMemberSchema.index({ poolId: 1, createdAt: -1 });

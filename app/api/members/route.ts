@@ -22,6 +22,8 @@ const LIST_SELECT = "-faceDescriptor -photoUrl";
 import { generateMemberId } from "@/lib/generateMemberId";
 import { MemberCreateSchema } from "@/lib/validators";
 
+import { getCache, setCache } from "@/lib/membersCache";
+
 export async function GET(req: Request) {
     try {
         const [, session] = await Promise.all([
@@ -38,86 +40,98 @@ export async function GET(req: Request) {
             Math.max(1, parseInt(url.searchParams.get("limit") ?? "12"))
         );
         const skip = (page - 1) * limit;
+        const search = url.searchParams.get("search") || "";
+        const planFilter = url.searchParams.get("planId") || "";
+        const statusFilter = url.searchParams.get("status") || "";
+        const balanceOnly = url.searchParams.get("balanceOnly") || "";
 
-        // Build tenant-isolated query — never return deleted members by default
-        const query: Record<string, unknown> = { isDeleted: false };
+        // ── Server-side cache check ──────────────────────────────────────
+        const poolKey = session.user.poolId || "superadmin";
+        const cacheKey = `members-${poolKey}-${page}-${limit}-${search}-${planFilter}-${statusFilter}-${balanceOnly}`;
+        const cached = getCache(cacheKey);
+        if (cached) {
+            return NextResponse.json(cached, {
+                headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" },
+            });
+        }
+
+        // ── Build match filter ───────────────────────────────────────────
+        const baseMatch: Record<string, unknown> = { isDeleted: false };
         if (session.user.role !== "superadmin" && session.user.poolId) {
-            query.poolId = session.user.poolId;
+            baseMatch.poolId = session.user.poolId;
         }
 
-        // Optional filters
-        const search = url.searchParams.get("search");
+        // Use $text search (indexed) instead of $regex (full scan)
         if (search) {
-            query.$or = [
-                { name: { $regex: search, $options: "i" } },
-                { phone: { $regex: search, $options: "i" } },
-                { memberId: { $regex: search, $options: "i" } },
-            ];
+            baseMatch.$text = { $search: search };
         }
-        const planFilter = url.searchParams.get("planId");
-        if (planFilter) query.planId = planFilter;
+        if (planFilter) baseMatch.planId = new mongoose.Types.ObjectId(planFilter);
+        if (statusFilter === "active") baseMatch.isExpired = false;
+        if (statusFilter === "expired") baseMatch.isExpired = true;
+        if (balanceOnly === "true") baseMatch.balanceAmount = { $gt: 0 };
 
-        const statusFilter = url.searchParams.get("status");
-        if (statusFilter === "active") query.isExpired = false;
-        if (statusFilter === "expired") query.isExpired = true;
+        // ── Single aggregation pipeline with $unionWith ──────────────────
+        const projectFields = {
+            name: 1, phone: 1, memberId: 1, planId: 1,
+            planQuantity: 1, planEndDate: 1, expiryDate: 1,
+            isExpired: 1, isDeleted: 1, paidAmount: 1,
+            balanceAmount: 1, paymentStatus: 1, equipmentTaken: 1,
+            createdAt: 1, cardStatus: 1, age: 1, photoUrl: 1,
+            _source: 1,
+        };
 
-        const balanceOnly = url.searchParams.get("balanceOnly");
-        if (balanceOnly === "true") query.balanceAmount = { $gt: 0 };
-
-        // ── Unified Search Pipeline with $unionWith for Stack Order (LIFO) ──
-        const populateFields = ["name", "durationDays", "durationHours", "durationMinutes", "price", "voiceAlert", "hasTokenPrint", "quickDelete"];
-
-        // Get totals first (still efficient)
-        const [regularTotal, entertainmentTotal] = await Promise.all([
-            Member.countDocuments(query),
-            EntertainmentMember.countDocuments(query),
-        ]);
-        const combinedTotal = regularTotal + entertainmentTotal;
-
-        // Optimized approach to handle multi-collection stack order sorting
-        // 1. Fetch lightweight refs (_id, createdAt) from both collections
-        const fetchLimit = skip + limit;
-        const [regRefs, entRefs] = await Promise.all([
-            Member.find(query).sort({ createdAt: -1 }).limit(fetchLimit).select("_id createdAt").lean(),
-            EntertainmentMember.find(query).sort({ createdAt: -1 }).limit(fetchLimit).select("_id createdAt").lean(),
-        ]);
-        
-        // 2. Combine and sort locally (very fast for thousands of lightweight objects)
-        const mergedRefs = [
-            ...regRefs.map(m => ({ id: m._id, createdAt: m.createdAt, type: "regular" })),
-            ...entRefs.map(m => ({ id: m._id, createdAt: m.createdAt, type: "entertainment" }))
+        const pipeline: mongoose.PipelineStage[] = [
+            { $match: baseMatch },
+            { $addFields: { _source: "regular" } },
+            {
+                $unionWith: {
+                    coll: "entertainment_members",
+                    pipeline: [
+                        { $match: baseMatch },
+                        { $addFields: { _source: "entertainment" } },
+                    ],
+                },
+            },
+            { $sort: { createdAt: -1 as const } },
+            { $skip: skip },
+            { $limit: limit },
+            // Populate planId via $lookup
+            {
+                $lookup: {
+                    from: "plans",
+                    localField: "planId",
+                    foreignField: "_id",
+                    as: "_plan",
+                    pipeline: [
+                        { $project: { name: 1, durationDays: 1, durationHours: 1, durationMinutes: 1, price: 1, voiceAlert: 1, hasTokenPrint: 1, quickDelete: 1 } },
+                    ],
+                },
+            },
+            { $addFields: { planId: { $arrayElemAt: ["$_plan", 0] } } },
+            { $project: { ...projectFields, _plan: 0, faceDescriptor: 0 } },
         ];
-        mergedRefs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        
-        // 3. Slice exactly the ones we need for this page
-        const pageRefs = mergedRefs.slice(skip, fetchLimit);
-        
-        // 4. Fetch the full documents ONLY for the items on the current page
-        const regIds = pageRefs.filter(r => r.type === "regular").map(r => r.id);
-        const entIds = pageRefs.filter(r => r.type === "entertainment").map(r => r.id);
-        
-        const [regDocs, entDocs] = await Promise.all([
-            regIds.length ? Member.find({ _id: { $in: regIds } }).populate("planId", populateFields.join(" ")).select(LIST_SELECT).lean() : [],
-            entIds.length ? EntertainmentMember.find({ _id: { $in: entIds } }).populate("planId", populateFields.join(" ")).select(LIST_SELECT).lean() : []
-        ]);
-        
-        // 5. Build lookup map to reconstruct correct order
-        const docMap = new Map();
-        regDocs.forEach(d => docMap.set(d._id.toString(), { ...d, _source: "regular" }));
-        entDocs.forEach(d => docMap.set(d._id.toString(), { ...d, _source: "entertainment" }));
-        
-        const data = pageRefs.map(r => docMap.get(r.id.toString())).filter(Boolean);
 
-        return NextResponse.json({
+        // Count total across both collections in parallel with aggregation
+        const [data, regularTotal, entertainmentTotal] = await Promise.all([
+            Member.aggregate(pipeline),
+            Member.countDocuments(baseMatch),
+            EntertainmentMember.countDocuments(baseMatch),
+        ]);
+        const total = regularTotal + entertainmentTotal;
+
+        const response = {
             data,
-            total: combinedTotal,
+            total,
             page,
             limit,
-            totalPages: Math.ceil(combinedTotal / limit),
-        }, {
-            headers: {
-                "Cache-Control": `private, max-age=${Math.floor(PRIVATE_API_STALE_MS / 1000)}, stale-while-revalidate=30`,
-            },
+            totalPages: Math.ceil(total / limit),
+        };
+
+        // Cache the response
+        setCache(cacheKey, response);
+
+        return NextResponse.json(response, {
+            headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" },
         });
     } catch (error) {
         console.error("[GET /api/members]", error);
