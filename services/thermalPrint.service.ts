@@ -55,7 +55,7 @@ function buildReceiptHTML(data: MemberReceiptData): string {
 
     body {
       font-family: 'Courier Prime', Courier, monospace;
-      font-size: 11.5px;
+      font-size: 10.5px;
       width: 72mm;
       padding: 0mm;
       background: white;
@@ -64,7 +64,7 @@ function buildReceiptHTML(data: MemberReceiptData): string {
     }
 
     .text-line {
-      font-size: 11.5px;
+      font-size: 10.5px;
       letter-spacing: 0px;
       text-align: center;
       margin: 1px 0;
@@ -72,7 +72,7 @@ function buildReceiptHTML(data: MemberReceiptData): string {
     }
 
     .pool-name {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: bold;
       text-align: center;
       text-transform: uppercase;
@@ -82,7 +82,7 @@ function buildReceiptHTML(data: MemberReceiptData): string {
     }
 
     .receipt-title {
-      font-size: 11px;
+      font-size: 10px;
       text-align: center;
       margin-bottom: 2px;
     }
@@ -90,10 +90,10 @@ function buildReceiptHTML(data: MemberReceiptData): string {
     table { width: 100%; border-collapse: collapse; margin: 1px 0; }
     td { padding: 0px 0; vertical-align: top; }
     td:first-child { width: 38%; color: #333; }
-    td:last-child { font-weight: bold; font-size: 11.5px; }
+    td:last-child { font-weight: bold; font-size: 10.5px; }
 
     .member-id {
-      font-size: 15px;
+      font-size: 13.5px;
       font-weight: bold;
       text-align: center;
       letter-spacing: 2px;
@@ -110,8 +110,11 @@ function buildReceiptHTML(data: MemberReceiptData): string {
   <div class="pool-name">${data.poolName}</div>
   <div class="receipt-title">TOKEN / RECEIPT</div>
   <div class="text-line">${doubleLine}</div>
+  <div class="text-line">${dashedLine}</div>
 
   <div class="member-id">${data.memberId}</div>
+
+  <div class="text-line">${dashedLine}</div>
 
   <table>
     <tr><td>Name</td><td>: ${data.name}</td></tr>
@@ -136,9 +139,8 @@ function buildReceiptHTML(data: MemberReceiptData): string {
   <div class="text-line">${dashedLine}</div>
 
   <table>
-    <tr><td>Date</td><td>: ${formatDate(data.registeredAt)}</td></tr>
-    <tr><td>Time</td><td>: ${formatTime(data.registeredAt)}</td></tr>
-    <tr><td>Valid Till</td><td>: ${formatDate(data.validTill)}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${formatTime(data.validTill)}</td></tr>
+    <tr><td>Date</td><td>: ${formatDate(data.registeredAt)} &nbsp;${formatTime(data.registeredAt)}</td></tr>
+    <tr><td>Valid Till</td><td>: ${formatDate(data.validTill)} &nbsp;${formatTime(data.validTill)}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${formatTime(data.validTill)}</td></tr>
   </table>
 
   <div class="text-line">${doubleLine}</div>
