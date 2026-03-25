@@ -40,8 +40,7 @@ function formatCurrency(amount: number): string {
 }
 
 function buildReceiptHTML(data: MemberReceiptData): string {
-    const dashedLine = "--------------------------------";
-    const doubleLine = "================================";
+    const dashedLine = "------------------------------------------";
 
     return `<!DOCTYPE html>
 <html>
@@ -55,95 +54,84 @@ function buildReceiptHTML(data: MemberReceiptData): string {
 
     body {
       font-family: 'Courier Prime', Courier, monospace;
-      font-size: 10.5px;
+      font-size: 11.5px;
       width: 72mm;
-      padding: 0mm;
+      padding: 0mm 4mm;
       background: white;
       color: #000;
-      line-height: 1.1;
+      line-height: 1.5;
     }
 
     .text-line {
-      font-size: 10.5px;
-      letter-spacing: 0px;
+      font-size: 11.5px;
       text-align: center;
-      margin: 1px 0;
-      white-space: pre;
+      margin: 4px 0;
+      color: #666;
+      white-space: nowrap;
+      overflow: hidden;
     }
 
     .pool-name {
-      font-size: 13px;
+      font-size: 16px;
       font-weight: bold;
       text-align: center;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 2px;
-      margin-top: 2px;
+      margin-bottom: 8px;
+      margin-top: 8px;
     }
-
-    .receipt-title {
-      font-size: 10px;
-      text-align: center;
-      margin-bottom: 2px;
-    }
-
-    table { width: 100%; border-collapse: collapse; margin: 1px 0; }
-    td { padding: 0px 0; vertical-align: top; }
-    td:first-child { width: 1%; white-space: nowrap; color: #333; padding-right: 0px; }
-    td:last-child { font-weight: bold; font-size: 10.5px; word-break: break-word; }
 
     .member-id {
-      font-size: 13.5px;
-      font-weight: bold;
+      font-size: 14px;
       text-align: center;
-      letter-spacing: 2px;
-      margin: 2px 0;
+      margin: 4px 0;
+    }
+
+    .row {
+      margin-bottom: 2px;
+      padding-left: 2px;
+    }
+    
+    .total-row {
+      text-align: center;
+      margin: 6px 0;
     }
 
     @media print {
       @page { width: 80mm; margin: 0; }
-      body { width: 72mm; padding: 0mm 4mm; }
+      body { width: 72mm; padding: 2mm 4mm; }
     }
   </style>
 </head>
 <body>
-  <div class="pool-name">${data.poolName}</div>
-  <div class="receipt-title">TOKEN / RECEIPT</div>
-  <div class="text-line">${doubleLine}</div>
+  <div class="pool-name">${data.poolName || "SWIMMING POOL"}</div>
   <div class="text-line">${dashedLine}</div>
 
   <div class="member-id">${data.memberId}</div>
 
   <div class="text-line">${dashedLine}</div>
 
-  <table>
-    <tr><td>Name</td><td>&nbsp;: ${data.name}</td></tr>
-    <tr><td>Phone</td><td>&nbsp;: ${data.phone}</td></tr>
-  </table>
+  <div class="row">Name : ${data.name}</div>
+  <div class="row">Phone : ${data.phone}</div>
 
   <div class="text-line">${dashedLine}</div>
 
-  <table>
-    <tr><td>Plan</td><td>&nbsp;: ${data.planName}</td></tr>
-    <tr><td>Qty</td><td>&nbsp;: ${data.planQty} unit${data.planQty > 1 ? "s" : ""}</td></tr>
-    <tr><td>Total</td><td>&nbsp;: ${formatCurrency(data.planPrice)}</td></tr>
-  </table>
+  <div class="row">Plan : ${data.planName}</div>
+  <div class="row">Qty : ${data.planQty} unit${data.planQty > 1 ? "s" : ""}</div>
 
   <div class="text-line">${dashedLine}</div>
 
-  <table>
-    <tr><td>Paid</td><td>&nbsp;: ${formatCurrency(data.paidAmount)}</td></tr>
-    <tr><td>Balance</td><td>&nbsp;: ${formatCurrency(data.balance > 0 ? data.balance : 0)}</td></tr>
-  </table>
+  <div class="total-row">Total : ${formatCurrency(data.planPrice)}</div>
 
   <div class="text-line">${dashedLine}</div>
 
-  <table>
-    <tr><td>Date</td><td>&nbsp;: ${formatDate(data.registeredAt)} &nbsp;${formatTime(data.registeredAt)}</td></tr>
-    <tr><td>Till</td><td>&nbsp;: ${formatDate(data.validTill)} &nbsp;${formatTime(data.validTill)}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${formatTime(data.validTill)}</td></tr>
-  </table>
+  <div class="row">Paid : ${formatCurrency(data.paidAmount)}</div>
+  <div class="row">Balance: ${formatCurrency(data.balance > 0 ? data.balance : 0)}</div>
 
-  <div class="text-line">${doubleLine}</div>
+  <div class="text-line">${dashedLine}</div>
+
+  <div class="row">Date : ${formatDate(data.registeredAt)} ${formatTime(data.registeredAt)}</div>
+  <div class="row">Till : ${formatDate(data.validTill)} ${formatTime(data.validTill)}</div>
+
 </body>
 </html>`;
 }
