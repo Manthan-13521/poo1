@@ -19,119 +19,67 @@ export interface MemberReceiptData {
     validTill: Date;
 }
 
-function formatDate(date: Date): string {
-    return date.toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-    });
-}
-
-function formatTime(date: Date): string {
-    return date.toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-    });
-}
-
-function formatCurrency(amount: number): string {
-    return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function fmtDateTime(date: Date): string {
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const mon = months[d.getMonth()];
+    const yr = d.getFullYear();
+    let h = d.getHours();
+    const m = String(d.getMinutes()).padStart(2, "0");
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${day} ${mon} ${yr} ${h}:${m} ${ampm}`;
 }
 
 function buildReceiptHTML(data: MemberReceiptData): string {
-    const dashedLine = "------------------------------------------";
+    const sep  = "--------------------------------";
+    const sepShort = "-----------------";
+    const sepMed   = "-------------";
+
+    const regDT  = fmtDateTime(data.registeredAt);
+    const tillDT = fmtDateTime(data.validTill);
+    const total  = `₹${data.planPrice}`;
+    const bal    = `₹${data.balance > 0 ? data.balance : 0}`;
 
     return `<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Receipt — ${data.memberId}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: 'Courier Prime', Courier, monospace;
-      font-size: 11.5px;
-      width: 72mm;
-      padding: 0mm 4mm;
-      background: white;
-      color: #000;
-      line-height: 1.1; /* SQUASHED */
-    }
-
-    .text-line {
-      font-size: 11.5px;
-      text-align: center;
-      margin: 1px 0; /* SQUASHED */
-      color: #666;
-      white-space: nowrap;
-      overflow: hidden;
-    }
-
-    .pool-name {
-      font-size: 15px;
-      font-weight: bold;
-      text-align: center;
-      text-transform: uppercase;
-      margin-bottom: 2px; /* SQUASHED */
-      margin-top: 2px; /* SQUASHED */
-    }
-
-    .member-id {
-      font-size: 14px;
-      text-align: center;
-      margin: 2px 0; /* SQUASHED */
-    }
-
-    .row {
-      margin-bottom: 0px; /* SQUASHED */
-      padding-left: 2px;
-    }
-    
-    .total-row {
-      text-align: center;
-      margin: 2px 0; /* SQUASHED */
-    }
-
-    @media print {
-      @page { width: 80mm; margin: 0; }
-      body { width: 72mm; padding: 0mm 2mm; } /* SQUASHED */
-    }
-  </style>
+<meta charset="UTF-8"/>
+<title>Receipt — ${data.memberId}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+@page{size:80mm auto;margin:0}
+html,body{width:72mm;margin:0;padding:0;background:#fff;color:#000;
+font-family:'Courier New',Courier,monospace;font-size:11px;line-height:1.15}
+#r{width:72mm;padding:1mm 3mm 0 3mm;page-break-after:avoid}
+.c{text-align:center}.b{font-weight:bold}
+.sep{margin:0;padding:0;overflow:hidden;white-space:nowrap}
+.row{margin:0;padding:0;white-space:nowrap}
+@media print{html,body{width:72mm}#r{padding:1mm 3mm 0 3mm}}
+</style>
 </head>
 <body>
-  <div class="pool-name">${data.poolName || "SWIMMING POOL"}</div>
-  <div class="text-line">${dashedLine}</div>
-
-  <div class="member-id">${data.memberId}</div>
-
-  <div class="text-line">${dashedLine}</div>
-
-  <div class="row">Name : ${data.name}</div>
-  <div class="row">Phone : ${data.phone}</div>
-
-  <div class="text-line">${dashedLine}</div>
-
-  <div class="row">Plan : ${data.planName}</div>
-  <div class="row">Qty : ${data.planQty} unit${data.planQty > 1 ? "s" : ""}</div>
-
-  <div class="text-line">${dashedLine}</div>
-
-  <div class="total-row">Total : ${formatCurrency(data.planPrice)}</div>
-
-  <div class="text-line">${dashedLine}</div>
-
-  <div class="row">Paid : ${formatCurrency(data.paidAmount)}</div>
-  <div class="row">Balance: ${formatCurrency(data.balance > 0 ? data.balance : 0)}</div>
-
-  <div class="text-line">${dashedLine}</div>
-
-  <div class="row">Date : ${formatDate(data.registeredAt)} ${formatTime(data.registeredAt)}</div>
-  <div class="row">Till : ${formatDate(data.validTill)} ${formatTime(data.validTill)}</div>
-
+<div id="r">
+<div class="c">SWIMMING POOL</div>
+<div class="c">(Token/Receipt)</div>
+<div class="sep">${sep}</div>
+<div class="row c"><span class="b">MID: ${data.memberId}</span></div>
+<div class="sep">${sep}</div>
+<div class="row">Name: ${data.name}</div>
+<div class="row">Phone: ${data.phone}</div>
+<div class="sep">${sep}</div>
+<div class="row">Plan: ${data.planName}</div>
+<div class="row"><span class="b">QTY: ${data.planQty} unit${data.planQty > 1 ? "s" : ""}</span></div>
+<div class="sep">${sep}</div>
+<div class="row">Total: ${total}</div>
+<div class="row"><span class="b">Balance: ${bal}</span></div>
+<div class="sep">${sep}</div>
+<div class="row">Date:      ${regDT}</div>
+<div class="row"><span class="b">ValidTill: ${tillDT}</span></div>
+<div class="sep">${sep}</div>
+</div>
+<script>window.onload=function(){window.print();setTimeout(function(){window.close()},600)}</script>
 </body>
 </html>`;
 }
@@ -146,7 +94,7 @@ export function printThermalReceipt(data: MemberReceiptData): void {
     if (typeof window === "undefined") return; // SSR guard
 
     const html = buildReceiptHTML(data);
-    const win = window.open("", "_blank", "width=340,height=400,toolbar=0,menubar=0,scrollbars=1");
+    const win = window.open("", "_blank", "width=340,height=300,toolbar=0,menubar=0,scrollbars=0");
 
     if (!win) {
         console.warn("[ThermalPrint] Popup blocked. Please allow popups for this site.");
@@ -156,10 +104,5 @@ export function printThermalReceipt(data: MemberReceiptData): void {
     win.document.write(html);
     win.document.close();
     win.focus();
-
-    // Small delay lets fonts/styles load before printing
-    setTimeout(() => {
-        win.print();
-        win.close();
-    }, 400);
+    // Auto-print & close handled by inline <script> in the receipt HTML
 }
