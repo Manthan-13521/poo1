@@ -33,10 +33,6 @@ function fmtDateTime(date: Date): string {
 }
 
 function buildReceiptHTML(data: MemberReceiptData): string {
-    const sep  = "--------------------------------";
-    const sepShort = "-----------------";
-    const sepMed   = "-------------";
-
     const regDT  = fmtDateTime(data.registeredAt);
     const tillDT = fmtDateTime(data.validTill);
     const total  = `₹${data.planPrice}`;
@@ -48,38 +44,78 @@ function buildReceiptHTML(data: MemberReceiptData): string {
 <meta charset="UTF-8"/>
 <title>Receipt — ${data.memberId}</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-@page{size:80mm auto;margin:0}
-html,body{width:72mm;margin:0;padding:0;background:#fff;color:#000;
-font-family:'Courier New',Courier,monospace;font-size:11px;line-height:1.15}
-#r{width:72mm;padding:1mm 3mm 0 3mm;page-break-after:avoid}
-.c{text-align:center}.b{font-weight:bold}
-.sep{margin:0;padding:0;overflow:hidden;white-space:nowrap}
-.row{margin:0;padding:0;white-space:nowrap}
-@media print{html,body{width:72mm}#r{padding:1mm 3mm 0 3mm}}
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+@page {
+    size: 80mm auto;
+    margin: 0;
+}
+html, body {
+    width: 80mm;
+    margin: 0;
+    padding: 0;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    line-height: 1.2;
+    background: #fff;
+    color: #000;
+}
+.receipt {
+    width: 100%;
+    padding: 4px;
+    box-sizing: border-box;
+}
+.c {
+    text-align: center;
+}
+.b {
+    font-weight: bold;
+}
+.hr {
+    border-top: 1px dashed black;
+    width: 100%;
+    margin: 2px 0;
+}
+.row {
+    width: 100%;
+    text-align: left;
+}
+@media print {
+    html, body {
+        width: 80mm;
+        margin: 0;
+        padding: 0;
+    }
+}
 </style>
 </head>
 <body>
-<div id="r">
-<div class="c">SWIMMING POOL</div>
-<div class="c">(Token/Receipt)</div>
-<div class="sep">${sep}</div>
-<div class="row c"><span class="b">MID: ${data.memberId}</span></div>
-<div class="sep">${sep}</div>
+<div class="receipt">
+<div class="row c">SWIMMING POOL</div>
+<div class="row c">(Token/Receipt)</div>
+<div class="hr"></div>
+<div class="row b">MID: ${data.memberId}</div>
 <div class="row">Name: ${data.name}</div>
 <div class="row">Phone: ${data.phone}</div>
-<div class="sep">${sep}</div>
+<div class="hr"></div>
 <div class="row">Plan: ${data.planName}</div>
-<div class="row"><span class="b">QTY: ${data.planQty} unit${data.planQty > 1 ? "s" : ""}</span></div>
-<div class="sep">${sep}</div>
-<div class="row">Total: ${total}</div>
-<div class="row"><span class="b">Balance: ${bal}</span></div>
-<div class="sep">${sep}</div>
-<div class="row">Date:      ${regDT}</div>
-<div class="row"><span class="b">ValidTill: ${tillDT}</span></div>
-<div class="sep">${sep}</div>
+<div class="row">QTY: ${data.planQty}</div>
+<div class="hr"></div>
+<div class="row b">Total: ${total}</div>
+<div class="row">Balance: ${bal}</div>
+<div class="hr"></div>
+<div class="row">Date: ${regDT}</div>
+<div class="row">ValidTill: ${tillDT}</div>
 </div>
-<script>window.onload=function(){window.print();setTimeout(function(){window.close()},600)}</script>
+<script>
+window.onload = function() {
+    window.print();
+    setTimeout(function() { window.close() }, 600);
+}
+</script>
 </body>
 </html>`;
 }
