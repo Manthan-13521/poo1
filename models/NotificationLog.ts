@@ -29,6 +29,8 @@ const notificationLogSchema = new Schema<INotificationLog>(
 notificationLogSchema.index({ memberId: 1 });
 notificationLogSchema.index({ date: -1 });  // sentAt equivalent
 notificationLogSchema.index({ status: 1 });
+// TTL: auto-delete logs older than 6 months — prevents Atlas free tier storage bloat
+notificationLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 15552000 });
 
 export const NotificationLog: Model<INotificationLog> =
     mongoose.models.NotificationLog || mongoose.model<INotificationLog>("NotificationLog", notificationLogSchema);
