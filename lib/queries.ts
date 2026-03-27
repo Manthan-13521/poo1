@@ -6,6 +6,35 @@ import { NotificationLog } from "@/models/NotificationLog";
 import { Payment } from "@/models/Payment";
 import { EntryLog } from "@/models/EntryLog";
 
+// ── IST Timezone Helper ────────────────────────────────────────────────
+// Vercel runs in UTC. We must compute IST (UTC+5:30) day boundaries
+// so dashboard resets at exactly 12:00 AM India time.
+function getISTDayBounds() {
+    const now = new Date();
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(now.getTime() + IST_OFFSET);
+
+    // Start of day in IST, converted back to UTC for MongoDB queries
+    const startOfDayIST = new Date(
+        Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate(), 0, 0, 0, 0)
+    );
+    startOfDayIST.setTime(startOfDayIST.getTime() - IST_OFFSET);
+
+    // End of day in IST, converted back to UTC
+    const endOfDayIST = new Date(
+        Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate(), 23, 59, 59, 999)
+    );
+    endOfDayIST.setTime(endOfDayIST.getTime() - IST_OFFSET);
+
+    // Start of month in IST, converted back to UTC
+    const startOfMonthIST = new Date(
+        Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1, 0, 0, 0, 0)
+    );
+    startOfMonthIST.setTime(startOfMonthIST.getTime() - IST_OFFSET);
+
+    return { startOfDayIST, endOfDayIST, startOfMonthIST, now };
+}
+
 /**
  * ── Member list (all members) ──────────────────────────────────────────
  */
@@ -34,46 +63,55 @@ export const getCachedMembers = unstable_cache(
 
 /**
  * ── Analytics summary data ─────────────────────────────────────────────
+ * Used for Today's Revenue and Monthly Revenue on the dashboard.
  */
 export const getCachedAnalyticsSummary = unstable_cache(
     async (poolId: string) => {
         await dbConnect();
         const baseMatch = poolId && poolId !== "superadmin" ? { poolId } : {};
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const { startOfDayIST, endOfDayIST, startOfMonthIST, now } = getISTDayBounds();
 
         const [
             activeMembers,
-            totalRevenue,
+            todaysRevenue,
             monthlyRevenue,
             entriesToday
         ] = await Promise.all([
-            Member.countDocuments({ ...baseMatch, isDeleted: false, status: "active" }),
+            // Active = not deleted AND expiryDate is in the future
+            Member.countDocuments({
+                ...baseMatch,
+                isDeleted: false,
+                $or: [
+                    { planEndDate: { $gte: now } },
+                    { expiryDate: { $gte: now } },
+                ]
+            }),
+            // Today's revenue — payments created today (IST bounds)
             Payment.aggregate([
-                { $match: { ...baseMatch, status: "success" } },
+                { $match: { ...baseMatch, status: "success", createdAt: { $gte: startOfDayIST, $lte: endOfDayIST } } },
                 { $group: { _id: null, total: { $sum: "$amount" } } }
             ]),
+            // Monthly revenue — payments created this month (IST)
             Payment.aggregate([
-                { $match: { ...baseMatch, status: "success", date: { $gte: thisMonth } } },
+                { $match: { ...baseMatch, status: "success", createdAt: { $gte: startOfMonthIST } } },
                 { $group: { _id: null, total: { $sum: "$amount" } } }
             ]),
+            // Today's entries — scans within IST day bounds
             EntryLog.aggregate([
-                { $match: { ...baseMatch, scanTime: { $gte: today }, status: "granted" } },
+                { $match: { ...baseMatch, scanTime: { $gte: startOfDayIST, $lte: endOfDayIST }, status: "granted" } },
                 { $group: { _id: null, total: { $sum: { $ifNull: ["$numPersons", 1] } } } }
             ])
         ]);
 
         return {
             activeMembers,
-            totalRevenue: totalRevenue[0]?.total || 0,
+            totalRevenue: todaysRevenue[0]?.total || 0,
             monthlyRevenue: monthlyRevenue[0]?.total || 0,
             entriesToday: entriesToday[0]?.total || 0,
         };
     },
     ["cached-analytics-summary"],
-    { revalidate: 60 }
+    { revalidate: 10 } // Reduced from 60s to 10s for near real-time updates
 );
 
 /**
@@ -108,20 +146,27 @@ export const getCachedNotificationLogs = unstable_cache(
 
 /**
  * ── Dashboard summary counts ───────────────────────────────────────────
+ * Used for Total Members, Active Members, Today's Entries cards.
  */
 export const getCachedDashboardCounts = unstable_cache(
     async (poolId: string) => {
         await dbConnect();
         const baseMatch = poolId && poolId !== "superadmin" ? { poolId } : {};
-        
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const { startOfDayIST, endOfDayIST, now } = getISTDayBounds();
 
         const [totalMembers, activeMembers, todaysEntries] = await Promise.all([
             Member.countDocuments({ ...baseMatch, isDeleted: false }),
-            Member.countDocuments({ ...baseMatch, isDeleted: false, status: "active" }),
+            // Active = not deleted AND expiry is in the future (real-time, not legacy status)
+            Member.countDocuments({
+                ...baseMatch,
+                isDeleted: false,
+                $or: [
+                    { planEndDate: { $gte: now } },
+                    { expiryDate: { $gte: now } },
+                ]
+            }),
             EntryLog.aggregate([
-                { $match: { ...baseMatch, scanTime: { $gte: today }, status: "granted" } },
+                { $match: { ...baseMatch, scanTime: { $gte: startOfDayIST, $lte: endOfDayIST }, status: "granted" } },
                 { $group: { _id: null, total: { $sum: { $ifNull: ["$numPersons", 1] } } } }
             ])
         ]);
@@ -133,5 +178,5 @@ export const getCachedDashboardCounts = unstable_cache(
         };
     },
     ["cached-dashboard-counts"],
-    { revalidate: 30 }
+    { revalidate: 10 } // Reduced from 30s to 10s for near real-time updates
 );

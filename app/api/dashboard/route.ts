@@ -6,11 +6,32 @@ import { EntryLog } from "@/models/EntryLog";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { runOccupancyCleanupInBackground } from "@/lib/cleanup";
-import { getCache, setCache } from "@/lib/membersCache";
 
 export const dynamic = "force-dynamic";
 
-const DASHBOARD_TTL_S = 300; // 5 minutes — safe for free Redis quota
+// ── IST Timezone Helper ────────────────────────────────────────────────
+function getISTDayBounds() {
+    const now = new Date();
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(now.getTime() + IST_OFFSET);
+
+    const startOfDayIST = new Date(
+        Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate(), 0, 0, 0, 0)
+    );
+    startOfDayIST.setTime(startOfDayIST.getTime() - IST_OFFSET);
+
+    const endOfDayIST = new Date(
+        Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate(), 23, 59, 59, 999)
+    );
+    endOfDayIST.setTime(endOfDayIST.getTime() - IST_OFFSET);
+
+    const startOfMonthIST = new Date(
+        Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1, 0, 0, 0, 0)
+    );
+    startOfMonthIST.setTime(startOfMonthIST.getTime() - IST_OFFSET);
+
+    return { startOfDayIST, endOfDayIST, startOfMonthIST, now };
+}
 
 export async function GET() {
     try {
@@ -22,86 +43,66 @@ export async function GET() {
         
         runOccupancyCleanupInBackground();
 
-        const poolKey = session.user.role === "superadmin" ? "superadmin" : (session.user.poolId ?? "unknown");
-        const cacheKey = `dashboard-stats-${poolKey}`;
-
-        // ── Cache check ─────────────────────────────────────────────────────
-        const cached = await getCache(cacheKey);
-        if (cached) {
-            return NextResponse.json(cached, {
-                headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60", "X-Cache": "HIT" },
-            });
-        }
-
-        // ── Timezone Fix: Force IST (UTC +5:30) for daily resets ──────────────
-        // Server runs in UTC, so we must calculate "Today in IST" manually
-        const now = new Date();
-        const istOffsetMs = 5.5 * 60 * 60 * 1000;
-        const nowIST = new Date(now.getTime() + istOffsetMs);
-        
-        // Start of Day IST: Zero out the hours in the IST representation, then convert back to true UTC for querying MongoDB
-        const startOfDayIST = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate(), 0, 0, 0, 0));
-        startOfDayIST.setTime(startOfDayIST.getTime() - istOffsetMs); // True UTC time for 12:00 AM IST
-
-        // Start of Month IST
-        const firstDayOfMonthIST = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1, 0, 0, 0, 0));
-        firstDayOfMonthIST.setTime(firstDayOfMonthIST.getTime() - istOffsetMs); // True UTC time for 1st of Month 12:00 AM IST
+        const { startOfDayIST, endOfDayIST, startOfMonthIST, now } = getISTDayBounds();
 
         const baseMatch = session.user.role !== "superadmin" && session.user.poolId 
             ? { poolId: session.user.poolId } 
             : {};
             
-        // Execute all independent queries in parallel
+        // Execute all independent queries in parallel — NO CACHE, always fresh
         const [
-            memberStats,
+            totalMembers,
+            activeMembers,
             entriesToday,
-            revenueStats,
+            todaysRevenueAgg,
+            monthlyRevenueAgg,
             expiringMembers
         ] = await Promise.all([
-            Member.aggregate([
-                { $match: { ...baseMatch, status: { $ne: "deleted" } } },
-                { $group: {
-                    _id: "$status",
-                    total: { $sum: { $ifNull: ["$planQuantity", 1] } }
-                }}
-            ]),
+            // Total non-deleted members
+            Member.countDocuments({ ...baseMatch, isDeleted: false }),
+
+            // Active = not deleted AND expiry is in the future (real-time check)
+            Member.countDocuments({
+                ...baseMatch,
+                isDeleted: false,
+                $or: [
+                    { planEndDate: { $gte: now } },
+                    { expiryDate: { $gte: now } },
+                ]
+            }),
+
+            // Today's entries — IST bounded
             EntryLog.aggregate([
-                { $match: { ...baseMatch, scanTime: { $gte: startOfDayIST }, status: "granted" } },
+                { $match: { ...baseMatch, scanTime: { $gte: startOfDayIST, $lte: endOfDayIST }, status: "granted" } },
                 { $group: { _id: null, total: { $sum: { $ifNull: ["$numPersons", 1] } } } }
             ]),
+
+            // Today's revenue — IST bounded, using createdAt
             Payment.aggregate([
-                { $match: { ...baseMatch, status: "success", date: { $gte: firstDayOfMonthIST } } },
-                { $group: {
-                    _id: { $cond: [{ $gte: ["$date", startOfDayIST] }, "today", "month"] },
-                    total: { $sum: "$amount" }
-                }}
+                { $match: { ...baseMatch, status: "success", createdAt: { $gte: startOfDayIST, $lte: endOfDayIST } } },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
             ]),
+
+            // Monthly revenue — IST bounded
+            Payment.aggregate([
+                { $match: { ...baseMatch, status: "success", createdAt: { $gte: startOfMonthIST } } },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
+            ]),
+
+            // Expiring in next 3 days
             Member.find({
                 ...baseMatch,
-                status: "active",
-                expiryDate: { 
-                    $gte: startOfDayIST, 
-                    $lte: new Date(startOfDayIST.getTime() + 3 * 24 * 60 * 60 * 1000) 
-                }
+                isDeleted: false,
+                $or: [
+                    { planEndDate: { $gte: startOfDayIST, $lte: new Date(startOfDayIST.getTime() + 3 * 86400000) } },
+                    { expiryDate: { $gte: startOfDayIST, $lte: new Date(startOfDayIST.getTime() + 3 * 86400000) } },
+                ]
             })
-            .select('memberId name phone expiryDate planQuantity')
+            .select('memberId name phone expiryDate planEndDate planQuantity')
             .lean()
         ]);
 
-        // Process Member Stats
-        let activeMembers = 0, expiredMembers = 0;
-        memberStats.forEach((stat: any) => {
-            if (stat._id === 'active') activeMembers = stat.total;
-            if (stat._id === 'expired') expiredMembers = stat.total;
-        });
-        const totalMembers = activeMembers + expiredMembers;
-
-        // Process Revenue Stats
-        let todaysRevenue = 0, monthlyRevenue = 0;
-        revenueStats.forEach((stat: any) => {
-            if (stat._id === 'today') todaysRevenue = stat.total;
-            monthlyRevenue += stat.total; 
-        });
+        const expiredMembers = totalMembers - activeMembers;
 
         const response = {
             stats: {
@@ -109,8 +110,8 @@ export async function GET() {
                 activeMembers,
                 expiredMembers,
                 todaysEntries: entriesToday[0]?.total || 0,
-                todaysRevenue,
-                monthlyRevenue
+                todaysRevenue: todaysRevenueAgg[0]?.total || 0,
+                monthlyRevenue: monthlyRevenueAgg[0]?.total || 0,
             },
             alerts: {
                 expiringMembers: expiringMembers.map((m: any) => ({
@@ -119,16 +120,15 @@ export async function GET() {
                     name: m.name,
                     phone: m.phone,
                     qty: m.planQuantity || 1,
-                    remainingDays: Math.ceil((new Date(m.expiryDate).getTime() - startOfDayIST.getTime()) / (1000 * 60 * 60 * 24))
+                    remainingDays: Math.ceil(
+                        (new Date(m.planEndDate || m.expiryDate).getTime() - startOfDayIST.getTime()) / 86400000
+                    )
                 }))
             }
         };
 
-        // ── Cache result (non-blocking) ──────────────────────────────────────
-        setCache(cacheKey, response).catch(() => {});
-
         return NextResponse.json(response, {
-            headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60", "X-Cache": "MISS" },
+            headers: { "Cache-Control": "no-store", "X-Cache": "NONE" },
         });
 
     } catch (error) {

@@ -89,20 +89,27 @@ async function SystemHealth() {
 // Alerts Component (Server)
 async function ExpiryAlerts({ poolId }: { poolId: string }) {
     await dbConnect();
-    const today = new Date();
-    today.setHours(0,0,0,0);
+
+    // IST timezone-safe "today" calculation
+    const now = new Date();
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(now.getTime() + IST_OFFSET);
+    const startOfDayIST = new Date(
+        Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate(), 0, 0, 0, 0)
+    );
+    startOfDayIST.setTime(startOfDayIST.getTime() - IST_OFFSET);
 
     const baseMatch = poolId && poolId !== "superadmin" ? { poolId } : {};
 
     const expiringMembers = await Member.find({
         ...baseMatch,
-        status: "active",
-        expiryDate: { 
-            $gte: today, 
-            $lte: new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000) 
-        }
+        isDeleted: false,
+        $or: [
+            { planEndDate: { $gte: startOfDayIST, $lte: new Date(startOfDayIST.getTime() + 3 * 86400000) } },
+            { expiryDate: { $gte: startOfDayIST, $lte: new Date(startOfDayIST.getTime() + 3 * 86400000) } },
+        ]
     })
-    .select('memberId name phone expiryDate planQuantity')
+    .select('memberId name phone expiryDate planEndDate planQuantity')
     .lean();
 
     const alerts = expiringMembers.map((m: any) => ({
@@ -111,7 +118,7 @@ async function ExpiryAlerts({ poolId }: { poolId: string }) {
         name: m.name,
         phone: m.phone,
         qty: m.planQuantity || 1,
-        remainingDays: Math.ceil((new Date(m.expiryDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        remainingDays: Math.ceil((new Date(m.planEndDate || m.expiryDate).getTime() - startOfDayIST.getTime()) / 86400000)
     }));
 
     return (
