@@ -32,7 +32,11 @@ export async function POST(req: Request) {
                 .digest("hex");
 
             if (generated_signature !== razorpay_signature) {
-                logger.error("Razorpay signature mismatch", { razorpay_order_id });
+                logger.audit({
+                    type: "PAYMENT_FAILED",
+                    ip: req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown",
+                    meta: { reason: "signature_mismatch", razorpay_order_id },
+                });
                 return NextResponse.json(
                     { error: "Payment verification failed: Invalid signature" },
                     { status: 400 }
@@ -48,9 +52,12 @@ export async function POST(req: Request) {
                 razorpayOrderId: razorpay_order_id,
             }).lean();
             if (existingPayment) {
+                logger.audit({
+                    type: "PAYMENT_DUPLICATE",
+                    meta: { razorpay_order_id, razorpay_payment_id },
+                });
                 const existingMember = await Member.findById(existingPayment.memberId).lean();
                 if (existingMember) {
-                    logger.info("Razorpay idempotency hit", { razorpay_order_id });
                     return NextResponse.json({
                         message: "Registration already processed",
                         dbId: (existingMember._id as any).toString(),
@@ -60,8 +67,42 @@ export async function POST(req: Request) {
             }
         }
 
+        // Duplicate payment ID check (prevents replay attacks)
+        if (razorpay_payment_id && !isMock) {
+            const dupByPaymentId = await Payment.findOne({ transactionId: razorpay_payment_id }).lean();
+            if (dupByPaymentId) {
+                logger.audit({
+                    type: "PAYMENT_DUPLICATE",
+                    meta: { reason: "duplicate_payment_id", razorpay_payment_id },
+                });
+                return NextResponse.json(
+                    { error: "Duplicate payment — this transaction has already been processed." },
+                    { status: 400 }
+                );
+            }
+        }
+
         const plan = await Plan.findById(memberData.planId).lean();
         if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+
+        // ── CRITICAL: Validate payment amount matches plan price from DB ──
+        const quantity = memberData.cartQuantity || 1;
+        const expectedAmount = plan.price * quantity;
+        if (memberData.amount && Math.abs(memberData.amount - expectedAmount) > 1) {
+            logger.audit({
+                type: "PAYMENT_FAILED",
+                meta: {
+                    reason: "amount_mismatch",
+                    clientAmount: memberData.amount,
+                    expectedAmount,
+                    planId: memberData.planId,
+                },
+            });
+            return NextResponse.json(
+                { error: "Payment amount does not match plan price. Possible tampering detected." },
+                { status: 400 }
+            );
+        }
 
         // Generate Member ID locally scoped to the tenant pool
         const lastMember = await Member.findOne({ poolId: plan.poolId }).sort({ createdAt: -1 }).lean();
@@ -80,7 +121,6 @@ export async function POST(req: Request) {
         // Expiry calculation
         const startDate = new Date();
         const expiryDate = new Date();
-        const quantity = memberData.cartQuantity || 1;
         if (plan.durationSeconds) {
             expiryDate.setSeconds(expiryDate.getSeconds() + plan.durationSeconds);
         } else if (plan.durationMinutes) {
@@ -143,10 +183,16 @@ export async function POST(req: Request) {
         });
         await payment.save();
 
-        logger.info("Member registered via Razorpay", {
-            memberId: generatedMemberId,
-            plan: plan.name,
-            amount: plan.price * quantity,
+        logger.audit({
+            type: "PAYMENT_SUCCESS",
+            poolId: plan.poolId,
+            meta: {
+                memberId: generatedMemberId,
+                plan: plan.name,
+                amount: plan.price * quantity,
+                razorpay_payment_id,
+                razorpay_order_id,
+            },
         });
 
         // WhatsApp notification

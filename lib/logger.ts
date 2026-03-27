@@ -29,6 +29,35 @@ function writeLog(file: string, entry: string) {
     }
 }
 
+// ── Structured audit event types ─────────────────────────────────────────
+export type AuditEventType =
+    | "PAYMENT_SUCCESS"
+    | "PAYMENT_FAILED"
+    | "PAYMENT_DUPLICATE"
+    | "LOGIN_SUCCESS"
+    | "LOGIN_FAILED"
+    | "LOGIN_LOCKED"
+    | "MEMBER_CREATED"
+    | "MEMBER_DELETED"
+    | "PLAN_CREATED"
+    | "PLAN_UPDATED"
+    | "PLAN_DELETED"
+    | "ENTRY_GRANTED"
+    | "ENTRY_DENIED"
+    | "RATE_LIMIT_HIT"
+    | "ABUSE_DETECTED"
+    | "CSRF_FAILED"
+    | "BACKUP_CREATED"
+    | "ADMIN_ACTION";
+
+interface AuditEvent {
+    type: AuditEventType;
+    userId?: string;
+    poolId?: string;
+    ip?: string;
+    meta?: Record<string, unknown>;
+}
+
 export const logger = {
     info(message: string, meta?: object) {
         const entry = formatEntry("INFO", message, meta);
@@ -51,5 +80,27 @@ export const logger = {
         console.log(entry.trim());
         writeLog("entry_scans.log", entry);
         writeLog("system.log", entry);
+    },
+
+    /**
+     * Structured audit log for security-sensitive events.
+     * Always writes to both console (JSON) and audit.log file.
+     * Events include: payments, logins, member changes, rate limits, abuse.
+     */
+    audit(event: AuditEvent) {
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            level: "AUDIT",
+            ...event,
+        };
+        const jsonStr = JSON.stringify(logEntry);
+        console.log(jsonStr);
+        writeLog("audit.log", jsonStr + "\n");
+        writeLog("system.log", formatEntry("AUDIT", event.type, {
+            userId: event.userId,
+            poolId: event.poolId,
+            ip: event.ip,
+            ...event.meta,
+        }));
     },
 };

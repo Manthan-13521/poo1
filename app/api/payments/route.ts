@@ -6,6 +6,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import mongoose from "mongoose";
 import { PaymentSchema } from "@/lib/validators";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +117,11 @@ export async function POST(req: Request) {
         if (idempotencyKey) {
             const existing = await Payment.findOne({ idempotencyKey }).lean();
             if (existing) {
+                logger.audit({
+                    type: "PAYMENT_DUPLICATE",
+                    userId: session.user.id,
+                    meta: { idempotencyKey, existingPaymentId: (existing as any)._id },
+                });
                 return NextResponse.json(
                     { message: "Duplicate request — payment already recorded.", payment: existing },
                     { status: 200 }
@@ -148,6 +154,14 @@ export async function POST(req: Request) {
         });
 
         await payment.save();
+
+        logger.audit({
+            type: "PAYMENT_SUCCESS",
+            userId: session.user.id,
+            poolId: poolId,
+            ip: req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown",
+            meta: { amount: Number(amount), paymentMethod, memberId },
+        });
 
         // ── Update member balance ──────────────────────────────────────────
         let memberToUpdate: any = await Member.findById(memberId);
