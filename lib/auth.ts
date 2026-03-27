@@ -6,6 +6,7 @@ import { PlatformAdmin } from "@/models/PlatformAdmin";
 import { Pool } from "@/models/Pool";
 import bcrypt from "bcryptjs";
 import { DefaultSession } from "next-auth";
+import { logger } from "./logger";
 
 // Basic in-memory rate limiter to prevent brute force attacks (e.g. 5 attempts / 15 mins)
 const MAX_ATTEMPTS = 5;
@@ -101,17 +102,34 @@ export const authOptions: NextAuthOptions = {
                     const platformAdmin = await PlatformAdmin.findOne({ email: credentials.username }).lean();
                     if (platformAdmin) {
                         const isMatch = await bcrypt.compare(credentials.password, platformAdmin.passwordHash);
-                        if (!isMatch) throw new Error("Invalid password");
-                        
-                        clearRateLimit(rlKey);
-
-                        return {
-                            id: platformAdmin._id.toString(),
-                            name: "Super Admin",
-                            email: platformAdmin.email,
-                            role: "superadmin",
-                        };
+                        if (isMatch) {
+                            clearRateLimit(rlKey);
+                            logger.audit({
+                                type: "LOGIN_SUCCESS",
+                                userId: platformAdmin._id.toString(),
+                                ip: clientIp,
+                                meta: { role: "superadmin" }
+                            });
+                            return {
+                                id: platformAdmin._id.toString(),
+                                name: "Super Admin",
+                                email: platformAdmin.email,
+                                role: "superadmin",
+                            };
+                        } else {
+                            logger.audit({
+                                type: "LOGIN_FAILED",
+                                ip: clientIp,
+                                meta: { role: "superadmin", email: credentials.username, reason: "invalid_password" }
+                            });
+                            throw new Error("Invalid password");
+                        }
                     }
+                    logger.audit({
+                        type: "LOGIN_FAILED",
+                        ip: clientIp,
+                        meta: { role: "superadmin", email: credentials.username, reason: "admin_not_found" }
+                    });
                     throw new Error("Super Admin not found");
                 }
 
@@ -144,8 +162,21 @@ export const authOptions: NextAuthOptions = {
                 const isMatch = await bcrypt.compare(credentials.password, user.passwordHash);
 
                 if (!isMatch) {
+                    logger.audit({
+                        type: "LOGIN_FAILED",
+                        ip: clientIp,
+                        meta: { role: user.role, poolId: user.poolId, username: credentials.username, reason: "invalid_password" }
+                    });
                     throw new Error("Invalid password");
                 }
+
+                logger.audit({
+                    type: "LOGIN_SUCCESS",
+                    userId: user._id.toString(),
+                    poolId: user.poolId,
+                    ip: clientIp,
+                    meta: { role: user.role }
+                });
 
                 clearRateLimit(rlKey);
 
