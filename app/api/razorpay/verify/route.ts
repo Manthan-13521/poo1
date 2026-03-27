@@ -5,7 +5,6 @@ import { Payment } from "@/models/Payment";
 import { Plan } from "@/models/Plan";
 import crypto from "crypto";
 import QRCode from "qrcode";
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { logger } from "@/lib/logger";
 import { uploadBuffer } from "@/lib/local-upload";
 import { savePhoto } from "@/lib/savePhoto";
@@ -195,11 +194,19 @@ export async function POST(req: Request) {
             },
         });
 
-        // WhatsApp notification
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-        const idCardUrl = `${baseUrl}/api/members/${generatedMemberId}/pdf`;
-        const welcomeMessage = `Hello ${memberData.name}! Your registration is successful. ID Card: ${idCardUrl}\n\n- TS Pools Mgmt`;
-        await sendWhatsAppMessage(newMember.phone, welcomeMessage);
+        // WhatsApp notification (via dispatcher for future BullMQ readiness)
+        try {
+            const { dispatchJob } = await import("@/lib/queueAdapter");
+            await dispatchJob("SEND_WELCOME_WHATSAPP", {
+                memberName: memberData.name,
+                memberId: generatedMemberId,
+                phone: newMember.phone,
+                poolId: plan.poolId,
+            });
+        } catch (notifyErr: any) {
+            // Non-critical — don't fail the registration if notification fails
+            console.warn("[Razorpay Verify] Welcome notification failed:", notifyErr?.message);
+        }
 
         return NextResponse.json({
             message: "Registration successful",
