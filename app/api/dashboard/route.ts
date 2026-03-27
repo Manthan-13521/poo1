@@ -34,7 +34,7 @@ function getISTDayBounds() {
     return { startOfDayIST, endOfDayIST, startOfMonthIST, now };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
     try {
         const [, session] = await Promise.all([
             dbConnect(),
@@ -46,28 +46,43 @@ export async function GET() {
 
         const { startOfDayIST, endOfDayIST, startOfMonthIST, now } = getISTDayBounds();
 
-        const baseMatch = session.user.role !== "superadmin" && session.user.poolId 
-            ? { poolId: session.user.poolId } 
-            : {};
+        const targetPoolId = new URL(req.url).searchParams.get("poolId");
+        
+        const baseMatch: any = { isDeleted: false };
+        if (targetPoolId && session.user.role === "superadmin") {
+            baseMatch.poolId = targetPoolId;
+        } else if (session.user.role !== "superadmin" && session.user.poolId) {
+            baseMatch.poolId = session.user.poolId;
+        }
             
         // Execute all independent queries in parallel — NO CACHE, always fresh
         const [
-            totalMembers,
-            activeMembers,
+            regTotalMembers,
+            entTotalMembers,
+            regActiveMembers,
+            entActiveMembers,
             entriesToday,
             todaysRevenueAgg,
             monthlyRevenueAgg,
-            expiringMembers,
+            regExpiringMembers,
+            entExpiringMembers,
             todaysMemberEntries,
             todaysEntertainmentEntries
         ] = await Promise.all([
             // Total non-deleted members
-            Member.countDocuments({ ...baseMatch, isDeleted: false }),
+            Member.countDocuments(baseMatch),
+            EntertainmentMember.countDocuments(baseMatch),
 
             // Active = not deleted AND expiry is in the future (real-time check)
             Member.countDocuments({
                 ...baseMatch,
-                isDeleted: false,
+                $or: [
+                    { planEndDate: { $gte: now } },
+                    { expiryDate: { $gte: now } },
+                ]
+            }),
+            EntertainmentMember.countDocuments({
+                ...baseMatch,
                 $or: [
                     { planEndDate: { $gte: now } },
                     { expiryDate: { $gte: now } },
@@ -95,7 +110,16 @@ export async function GET() {
             // Expiring in next 3 days
             Member.find({
                 ...baseMatch,
-                isDeleted: false,
+                $or: [
+                    { planEndDate: { $gte: startOfDayIST, $lte: new Date(startOfDayIST.getTime() + 3 * 86400000) } },
+                    { expiryDate: { $gte: startOfDayIST, $lte: new Date(startOfDayIST.getTime() + 3 * 86400000) } },
+                ]
+            })
+            .select('memberId name phone expiryDate planEndDate planQuantity')
+            .lean(),
+
+            EntertainmentMember.find({
+                ...baseMatch,
                 $or: [
                     { planEndDate: { $gte: startOfDayIST, $lte: new Date(startOfDayIST.getTime() + 3 * 86400000) } },
                     { expiryDate: { $gte: startOfDayIST, $lte: new Date(startOfDayIST.getTime() + 3 * 86400000) } },
@@ -107,18 +131,19 @@ export async function GET() {
             // Today's regular member registrations
             Member.countDocuments({
                 ...baseMatch,
-                isDeleted: false,
                 createdAt: { $gte: startOfDayIST, $lte: endOfDayIST }
             }),
             // Today's entertainment member registrations
             EntertainmentMember.countDocuments({
                 ...baseMatch,
-                isDeleted: false,
                 createdAt: { $gte: startOfDayIST, $lte: endOfDayIST }
             })
         ]);
 
+        const totalMembers = regTotalMembers + entTotalMembers;
+        const activeMembers = regActiveMembers + entActiveMembers;
         const expiredMembers = totalMembers - activeMembers;
+        const expiringMembers = [...regExpiringMembers, ...entExpiringMembers];
 
         const response = {
             stats: {

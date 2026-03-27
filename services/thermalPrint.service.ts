@@ -98,6 +98,7 @@ html, body {
 <div class="row c">(Token/Receipt)</div>
 <div class="hr"></div>
 <div class="row c b">MID: ${data.memberId}</div>
+<div class="hr"></div>
 <div class="row">Name: ${data.name}</div>
 <div class="row">Phone: ${data.phone}</div>
 <div class="hr"></div>
