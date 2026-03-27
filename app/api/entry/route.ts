@@ -9,7 +9,6 @@ import { getSettings } from "@/models/Settings"; // Kept for legacy global fallb
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logger } from "@/lib/logger";
-import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { verifyQRToken } from "@/lib/qrSigner";
 import mongoose from "mongoose";
 import { runOccupancyCleanupInBackground } from "@/lib/cleanup";
@@ -19,13 +18,7 @@ export const dynamic = "force-dynamic";
 const SCAN_COOLDOWN_MS = 3000; // 3-second cooldown
 
 export async function POST(req: Request) {
-    // ── Rate limit: max 50 scans / minute per IP (Section 8B)
-    const ip = getClientIp(req);
-    const isAllowed = checkRateLimit(ip, "entry", 50);
-    if (!isAllowed) {
-        logger.warn("Entry rate limit hit", { ip });
-        return NextResponse.json({ error: "Too many scan requests. Slow down." }, { status: 429 });
-    }
+    // Rate limiting is now handled globally by middleware
 
     try {
         const [, session, body] = await Promise.all([
@@ -191,7 +184,7 @@ export async function POST(req: Request) {
         if (providedToken && member.qrToken && providedToken !== member.qrToken) {
             logger.scan("QR scan denied — invalid token (possible screenshot reuse)", {
                 memberId,
-                ip,
+                ip: req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown",
             });
             await EntryLog.create({
                 poolId: session.user.poolId,

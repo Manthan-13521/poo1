@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import { dbConnect } from "@/lib/mongodb";
 import { Plan } from "@/models/Plan";
+import { RazorpayOrderSchema } from "@/lib/validators";
 
 // Initialize Razorpay instance conditionally
 const razorpay = new Razorpay({
@@ -11,11 +12,12 @@ const razorpay = new Razorpay({
 
 export async function POST(req: Request) {
     try {
-        const { planId, cartQuantity = 1 } = await req.json();
-
-        if (!planId) {
-            return NextResponse.json({ error: "Plan ID is required" }, { status: 400 });
+        const body = await req.json();
+        const result = RazorpayOrderSchema.safeParse(body);
+        if (!result.success) {
+            return NextResponse.json({ error: result.error.flatten() }, { status: 400 });
         }
+        const { planId, cartQuantity } = result.data;
 
         await dbConnect();
         const plan = await Plan.findById(planId);

@@ -9,6 +9,7 @@ import crypto from "crypto";
 import { uploadBuffer } from "@/lib/local-upload";
 import { savePhoto } from "@/lib/savePhoto";
 import { signQRToken } from "@/lib/qrSigner";
+import { EntertainmentMemberCreateSchema } from "@/lib/validators";
 
 export async function GET(req: Request) {
     try {
@@ -31,10 +32,11 @@ export async function GET(req: Request) {
 
         const search = url.searchParams.get("search");
         if (search) {
+            const sanitized = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Prevent ReDoS
             query.$or = [
-                { name: { $regex: search, $options: "i" } },
-                { phone: { $regex: search, $options: "i" } },
-                { memberId: { $regex: search, $options: "i" } },
+                { name: { $regex: sanitized, $options: "i" } },
+                { phone: { $regex: sanitized, $options: "i" } },
+                { memberId: { $regex: sanitized, $options: "i" } },
             ];
         }
 
@@ -71,10 +73,11 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const body = await req.json();
-        const { name, phone, dob, planId, photoBase64, aadharCard, address, planQuantity = 1, paidAmount = 0, balanceAmount = 0 } = body;
-
-        if (!name || !phone || !planId)
-            return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+        const result = EntertainmentMemberCreateSchema.safeParse(body);
+        if (!result.success) {
+            return NextResponse.json({ error: result.error.flatten() }, { status: 400 });
+        }
+        const { name, phone, planId, dob, photoBase64, aadharCard, address, planQuantity = 1, paidAmount = 0, balanceAmount = 0 } = result.data;
 
         const plan = await Plan.findById(planId).lean();
         if (!plan)

@@ -2,14 +2,10 @@ import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
 import { Member } from "@/models/Member";
 import { StudentMember } from "@/models/StudentMember";
-import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
     try {
-        const ip = getClientIp(req);
-        if (!checkRateLimit(ip, "login", 5)) {
-            return NextResponse.json({ error: "Too many login attempts. Try again later." }, { status: 429 });
-        }
+        // Rate limiting is now handled globally by middleware
 
         await dbConnect();
         const body = await req.json();

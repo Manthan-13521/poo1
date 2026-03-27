@@ -3,6 +3,7 @@ import { dbConnect } from "@/lib/mongodb";
 import { Plan } from "@/models/Plan";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { PlanSchema } from "@/lib/validators";
 
 export async function PUT(
     req: Request,
@@ -22,11 +23,16 @@ export async function PUT(
         }
 
         const body = await req.json();
-        // Strip potentially dangerous fields from body
-        delete body._id;
-        delete body.deletedAt;
+        
+        // Use Zod to validate the update body
+        const result = PlanSchema.partial().safeParse(body);
+        if (!result.success) {
+            return NextResponse.json({ error: result.error.flatten() }, { status: 400 });
+        }
 
-        const updatedPlan = await Plan.findByIdAndUpdate(id, body, { new: true });
+        const data = result.data;
+
+        const updatedPlan = await Plan.findByIdAndUpdate(id, { $set: data }, { new: true });
 
         if (!updatedPlan) {
             return NextResponse.json({ error: "Plan not found" }, { status: 404 });

@@ -6,6 +6,7 @@ import { StudentMember } from "@/models/StudentMember";
 import { BlacklistedMember } from "@/models/BlacklistedMembers";
 import { EntryLog } from "@/models/EntryLog";
 import { memberCache } from "@/lib/cache";
+import { ScanSchema } from "@/lib/validators";
 
 // High Performance Entry/Exit Scan Route (< 200ms Target)
 export async function POST(req: Request) {
@@ -13,11 +14,11 @@ export async function POST(req: Request) {
         const startTime = Date.now();
         await dbConnect();
         const body = await req.json();
-        const { poolId, scanToken, type, method } = body; // type: "entry" | "exit", method: "qr" | "face"
-
-        if (!poolId || !scanToken || !type) {
-            return NextResponse.json({ error: "Missing scan parameters" }, { status: 400 });
+        const result = ScanSchema.safeParse(body);
+        if (!result.success) {
+            return NextResponse.json({ error: "Invalid scan parameters", details: result.error.flatten() }, { status: 400 });
         }
+        const { poolId, scanToken, type, method } = result.data;
 
         // 1. Smart Crowd Control Evaluation (Only on Entry)
         let pool = await Pool.findOne({ poolId }).lean() as any;

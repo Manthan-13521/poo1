@@ -182,7 +182,7 @@ export async function GET(req: Request) {
     }
 }
 
-import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+
 
 export async function POST(req: Request) {
     try {
@@ -197,12 +197,7 @@ export async function POST(req: Request) {
 
         const sessionUser = token as any;
 
-        // Rate limiting for member creation (Section 4)
-        const { checkRateLimit, getClientIp } = await import("@/lib/rateLimit");
-        const ip = getClientIp(req);
-        if (!checkRateLimit(ip, "member-create", 20)) {
-            return NextResponse.json({ error: "Too many member creations. Slow down." }, { status: 429 });
-        }
+        // Rate limiting is now handled globally by middleware
 
         // Map frontend fields to match Zod schema expectations
         const mappedBody = {
